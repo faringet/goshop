@@ -1,0 +1,34 @@
+app_name: "users"
+
+http:
+  addr: ":8081"
+  read_timeout: 5s
+  write_timeout: 10s
+  idle_timeout: 60s
+
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "goshop"
+  password: "goshop"   # ⚠️ в реале уходит в Secret/ENV
+  dbname: "goshop"
+  sslmode: "disable"
+  max_conns: 20
+  min_conns: 5
+  conn_life: 30m
+  health_ping: 5s
+
+redis:
+  addr: "localhost:6379"
+  db: 0
+
+logger:
+  level: "debug"
+  json: false
+
+telemetry:
+  otlp_endpoint: ""     # пусто = локально без экспорта
+  sample_ratio: 0.1
+
+auth:
+  signing_key: "dev-secret" # ⚠️ ТОЛЬКО для локальной разработки
