@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"goshop/pkg/logger"
-	"log/slog"
+	httpserver "goshop/services/users/internal/adapters/http"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -21,35 +21,17 @@ func main() {
 	//log := logger.New(cfg.Logger)
 	log := logger.NewPretty(cfg.Logger)
 
-	// 3) HTTP-mux с базовыми health-пробами.
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", okHandler)
-	mux.HandleFunc("/live", okHandler)
-	mux.HandleFunc("/ready", okHandler)
+	// 3) HTTP-сервер (Gin) со здоровьем и middleware
+	srv := httpserver.New(cfg.HTTP, log)
 
-	// (опционально можно подключить pprof позже)
-	// import _ "net/http/pprof" и добавить:
-	// mux.HandleFunc("/debug/pprof/", pprof.Index) ... — сделаем отдельным шагом
-
-	// 4) HTTP-сервер с таймаутами из конфига.
-	srv := &http.Server{
-		Addr:              cfg.HTTP.Addr,
-		Handler:           mux,
-		ReadTimeout:       cfg.HTTP.ReadTimeout,
-		WriteTimeout:      cfg.HTTP.WriteTimeout,
-		IdleTimeout:       cfg.HTTP.IdleTimeout,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
-	// 5) Грейсфул-лайфцикл.
+	// 4) Грейсфул-лайфцикл: Ctrl+C / SIGTERM → аккуратная остановка
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		log.Info("http: listening", slog.String("addr", cfg.HTTP.Addr))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("http: listen failed", slog.String("err", err.Error()))
-			stop() // триггерим shutdown
+			log.Error("http: listen failed", "err", err)
+			stop()
 		}
 	}()
 
@@ -60,14 +42,8 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("http: graceful shutdown failed", slog.String("err", err.Error()))
+		log.Error("http: graceful shutdown failed", "err", err)
 	} else {
 		log.Info("http: server stopped cleanly")
 	}
-}
-
-// okHandler — простой 200 OK.
-func okHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write([]byte("ok"))
 }
