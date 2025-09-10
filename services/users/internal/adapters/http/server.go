@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	pcfg "goshop/pkg/config"
 	"goshop/services/users/internal/adapters/http/handlers"
+	"goshop/services/users/internal/app"
 	"log/slog"
 	"net/http"
 	"time"
@@ -57,6 +58,18 @@ func (b *Builder) WithDefaultEndpoints() *Builder {
 	v1.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
 	v1.GET("/db/ping", hh.DBPing)
 
+	return b
+}
+
+func (b *Builder) WithUsers(svc *app.Service) *Builder {
+	uh := handlers.NewUsersHandlers(b.log, svc)
+
+	v1 := b.r.Group("/v1")
+	u := v1.Group("/users")
+	{
+		u.POST("/register", uh.Register)
+		u.POST("/login", uh.Login)
+	}
 	return b
 }
 

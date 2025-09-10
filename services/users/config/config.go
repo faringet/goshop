@@ -1,4 +1,3 @@
-// services/users/internal/config/config.go
 package config
 
 import (
@@ -54,7 +53,7 @@ func Load() (*Users, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	v.SetConfigFile("./services/users/internal/config/defaults.yaml")
+	v.SetConfigFile("./services/users/config/defaults.yaml")
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read defaults.yaml: %w", err)
 	}
