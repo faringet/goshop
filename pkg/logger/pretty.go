@@ -12,7 +12,7 @@ import (
 	pcfg "goshop/pkg/config"
 )
 
-func NewPretty(c pcfg.Logger) *slog.Logger {
+func NewPrettyLogger(c pcfg.Logger) *slog.Logger {
 	h := &prettyHandler{
 		w:     os.Stdout,
 		level: parseLevel(strings.ToLower(c.Level)),

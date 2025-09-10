@@ -85,7 +85,8 @@ func Load() (*Users, error) {
 	return &cfg, nil
 }
 
-func MustLoad() *Users {
+// NewConfig (defaults.yaml → users.yaml → ENV USERS_*)
+func NewConfig() *Users {
 	c, err := Load()
 	if err != nil {
 		panic(err)

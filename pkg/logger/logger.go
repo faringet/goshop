@@ -8,7 +8,7 @@ import (
 	"goshop/pkg/config"
 )
 
-func New(c config.Logger) *slog.Logger {
+func NewLogger(c config.Logger) *slog.Logger {
 	var lvl slog.Level
 	switch strings.ToLower(c.Level) {
 	case "debug":
