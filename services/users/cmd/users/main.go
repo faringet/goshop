@@ -4,30 +4,38 @@ import (
 	"context"
 	"errors"
 	"goshop/pkg/logger"
+	"goshop/pkg/postgres"
 	httpserver "goshop/services/users/internal/adapters/http"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
 
-	svcconfig "goshop/services/users/internal/config"
+	"goshop/services/users/internal/config"
 )
 
 func main() {
-	// 1) Загрузка конфигурации сервиса (defaults.yaml → users.yaml → ENV USERS_*).
-	cfg := svcconfig.MustLoad()
-
-	// 2) Логгер
-	//log := logger.New(cfg.Logger)
-	log := logger.NewPretty(cfg.Logger)
-
-	// 3) HTTP-сервер (Gin) со здоровьем и middleware
-	srv := httpserver.New(cfg.HTTP, log)
-
-	// 4) Грейсфул-лайфцикл: Ctrl+C / SIGTERM → аккуратная остановка
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Config
+	cfg := config.NewConfig()
+
+	// Logger
+	log := logger.NewPrettyLogger(cfg.Logger)
+
+	// Postgres
+	pool, err := postgres.NewPool(ctx, cfg.Postgres)
+	if err != nil {
+		log.Error("postgres: connect failed", "host", cfg.Postgres.Host, "port", cfg.Postgres.Port, "db", cfg.Postgres.DBName, "err", err)
+		return
+	}
+	defer pool.Close()
+
+	// Server
+	srv := httpserver.NewBuilder(cfg.HTTP, log).WithDB(pool).WithDefaultEndpoints().Build()
+
+	// Graceful shutdown (Ctrl+C / SIGTERM)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("http: listen failed", "err", err)

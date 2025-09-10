@@ -8,9 +8,9 @@ http:
 
 postgres:
   host: "localhost"
-  port: 5432
+  port: 5433
   user: "goshop"
-  password: "goshop"   # ⚠️ в реале уходит в Secret/ENV
+  password: "goshop"
   dbname: "goshop"
   sslmode: "disable"
   max_conns: 20
@@ -27,7 +27,7 @@ logger:
   json: false
 
 telemetry:
-  otlp_endpoint: ""     # пусто = локально без экспорта
+  otlp_endpoint: ""
   sample_ratio: 0.1
 
 auth:
