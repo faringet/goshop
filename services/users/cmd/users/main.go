@@ -5,13 +5,14 @@ import (
 	"errors"
 	"goshop/pkg/logger"
 	"goshop/pkg/postgres"
+	"goshop/services/users/config"
 	httpserver "goshop/services/users/internal/adapters/http"
+	"goshop/services/users/internal/adapters/repo/userpg"
+	"goshop/services/users/internal/app"
 	"net/http"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"goshop/services/users/internal/config"
 )
 
 func main() {
@@ -32,8 +33,11 @@ func main() {
 	}
 	defer pool.Close()
 
+	repo := userpg.NewRepo(pool)
+	svc := app.NewService(repo, 12)
+
 	// Server
-	srv := httpserver.NewBuilder(cfg.HTTP, log).WithDB(pool).WithDefaultEndpoints().Build()
+	srv := httpserver.NewBuilder(cfg.HTTP, log).WithDB(pool).WithDefaultEndpoints().WithUsers(svc).Build()
 
 	// Graceful shutdown (Ctrl+C / SIGTERM)
 	go func() {
