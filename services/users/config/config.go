@@ -17,11 +17,7 @@ type Users struct {
 	Redis     cfg.Redis     `mapstructure:"redis"`
 	Logger    cfg.Logger    `mapstructure:"logger"`
 	Telemetry cfg.Telemetry `mapstructure:"telemetry"`
-	Auth      Auth          `mapstructure:"auth"`
-}
-
-type Auth struct {
-	SigningKey string `mapstructure:"signing_key"`
+	JWT       cfg.JWT       `mapstructure:"jwt"`
 }
 
 func (u *Users) Validate() error {
@@ -40,8 +36,8 @@ func (u *Users) Validate() error {
 	if err := u.Telemetry.Validate(); err != nil {
 		return fmt.Errorf("telemetry: %w", err)
 	}
-	if u.Auth.SigningKey == "" {
-		return errors.New("auth.signing_key is required (no defaults for secrets)")
+	if u.JWT.Secret == "" {
+		return errors.New("jwt.secret is required (no defaults for secrets)")
 	}
 	return nil
 }
