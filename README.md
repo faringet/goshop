@@ -83,12 +83,50 @@ ___
 
 **Response:**
 ```json
-200 {"status":"ok"}
+200 ok
+
+{
+  "access_token":  "<JWT_ACCESS>",
+  "refresh_token": "<JWT_REFRESH>",
+  "token_type":    "Bearer",
+  "expires_in":    7200
+}
 ```
-или
+
+**Ошибки:**
+
+401 {"error":"invalid credentials"} — неверная почта/пароль/пользователь
+
+500 {"error":"internal error"} — внутренняя ошибка
+
+___
+
+* GET ```/v1/users/me```
+
+**Request:**
 ```json
-401 {"error":"invalid credentials"} - неверная почта/пароль/пользователь
+Authorization: Bearer <JWT_ACCESS>
 ```
+
+**Response:**
+```json
+200 ok
+
+{
+  "uid":        "c583756e-a3a4-4c11-a3dd-80d9b1e9bc43",
+  "email":      "user@example.com",
+  "issuer":     "goshop-users",
+  "subject":    "access",
+  "issued_at":  "2025-09-22T13:00:00Z",
+  "expires_at": "2025-09-22T15:00:00Z"
+}
+```
+
+**Ошибки:**
+
+401 {"error":"unauthorized"} - отсутствует/неверный/просроченный токен
+
+401 {"error":"invalid token"} - битый формат и т.п.
 
 
 ## Дефолтные миграции:

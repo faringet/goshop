@@ -34,3 +34,6 @@ build/
 tmp/
 .env
 .env.*
+
+# app config (local only)
+services/users/config/defaults.yaml
