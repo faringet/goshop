@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pcfg "goshop/pkg/config"
+	"goshop/pkg/jwtauth"
 	"goshop/services/users/internal/adapters/http/handlers"
 	"goshop/services/users/internal/app"
 	"log/slog"
@@ -61,14 +62,30 @@ func (b *Builder) WithDefaultEndpoints() *Builder {
 	return b
 }
 
-func (b *Builder) WithUsers(svc *app.Service) *Builder {
-	uh := handlers.NewUsersHandlers(b.log, svc)
+//func (b *Builder) WithUsers(svc *app.Service) *Builder {
+//	uh := handlers.NewUsersHandlers(b.log, svc)
+//
+//	v1 := b.r.Group("/v1")
+//	u := v1.Group("/users")
+//	{
+//		u.POST("/register", uh.Register)
+//		u.POST("/login", uh.Login)
+//	}
+//	return b
+//}
+
+func (b *Builder) WithUsersAuth(svc *app.Service, jwtm *jwtauth.Manager) *Builder {
+	uh := handlers.NewUsersHandlers(b.log, svc, jwtm)
 
 	v1 := b.r.Group("/v1")
 	u := v1.Group("/users")
 	{
 		u.POST("/register", uh.Register)
 		u.POST("/login", uh.Login)
+
+		auth := u.Group("")
+		auth.Use(handlers.Auth(b.log, jwtm))
+		auth.GET("/me", uh.Me)
 	}
 	return b
 }

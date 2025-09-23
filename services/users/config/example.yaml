@@ -1,0 +1,37 @@
+app_name:
+
+http:
+  addr:
+  read_timeout:
+  write_timeout:
+  idle_timeout:
+
+postgres:
+  host:
+  port:
+  user:
+  password:
+  dbname:
+  sslmode:
+  max_conns:
+  min_conns:
+  conn_life:
+  health_ping:
+
+redis:
+  addr:
+  db:
+
+jwt:
+  secret:
+  issuer:
+  access_ttl:
+  refresh_ttl:
+
+logger:
+  level:
+  json:
+
+telemetry:
+  otlp_endpoint:
+  sample_ratio: 0.

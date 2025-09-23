@@ -2,24 +2,26 @@ package handlers
 
 import (
 	"errors"
+	"goshop/pkg/jwtauth"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"log/slog"
 
-	userpg "goshop/services/users/internal/adapters/repo/userpg"
-	app "goshop/services/users/internal/app"
+	"goshop/services/users/internal/adapters/repo/userpg"
+	"goshop/services/users/internal/app"
 	domain "goshop/services/users/internal/domain/user"
 )
 
 type UsersHandlers struct {
-	log *slog.Logger
-	svc *app.Service
+	log  *slog.Logger
+	svc  *app.Service
+	jwtm *jwtauth.Manager
 }
 
-func NewUsersHandlers(log *slog.Logger, svc *app.Service) *UsersHandlers {
-	return &UsersHandlers{log: log, svc: svc}
+func NewUsersHandlers(log *slog.Logger, svc *app.Service, jwtm *jwtauth.Manager) *UsersHandlers {
+	return &UsersHandlers{log: log, svc: svc, jwtm: jwtm}
 }
 
 type registerReq struct {
@@ -37,7 +39,10 @@ type loginReq struct {
 	Password string `json:"password"`
 }
 type loginResp struct {
-	Status string `json:"status"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int64  `json:"expires_in"`
 }
 
 func (h *UsersHandlers) Register(c *gin.Context) {
@@ -92,11 +97,23 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 		return
 	}
 
-	_, err := h.svc.Authenticate(c.Request.Context(), in.Email, in.Password)
+	u, err := h.svc.Authenticate(c.Request.Context(), in.Email, in.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
-	c.JSON(http.StatusOK, loginResp{Status: "ok"})
+	access, refresh, err := h.jwtm.GeneratePair(u.ID.String(), u.Email)
+	if err != nil {
+		h.log.Error("jwt.GeneratePair failed", slog.Any("err", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, loginResp{
+		AccessToken:  access,
+		RefreshToken: refresh,
+		TokenType:    "Bearer",
+		ExpiresIn:    h.jwtm.ExpiresIn(),
+	})
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"goshop/pkg/jwtauth"
 	"goshop/pkg/logger"
 	"goshop/pkg/postgres"
 	"goshop/services/users/config"
@@ -36,8 +37,16 @@ func main() {
 	repo := userpg.NewRepo(pool)
 	svc := app.NewService(repo, 12)
 
+	// JWT
+	jwtm := jwtauth.New(jwtauth.Config{
+		Secret:     cfg.JWT.Secret,
+		Issuer:     cfg.JWT.Issuer,
+		AccessTTL:  cfg.JWT.AccessTTL,
+		RefreshTTL: cfg.JWT.RefreshTTL,
+	})
+
 	// Server
-	srv := httpserver.NewBuilder(cfg.HTTP, log).WithDB(pool).WithDefaultEndpoints().WithUsers(svc).Build()
+	srv := httpserver.NewBuilder(cfg.HTTP, log).WithDB(pool).WithDefaultEndpoints().WithUsersAuth(svc, jwtm).Build()
 
 	// Graceful shutdown (Ctrl+C / SIGTERM)
 	go func() {
