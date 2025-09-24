@@ -7,6 +7,7 @@ import (
 	pcfg "goshop/pkg/config"
 	"goshop/pkg/jwtauth"
 	"goshop/services/users/internal/adapters/http/handlers"
+	"goshop/services/users/internal/adapters/repo/sessionpg"
 	"goshop/services/users/internal/app"
 	"log/slog"
 	"net/http"
@@ -75,17 +76,24 @@ func (b *Builder) WithDefaultEndpoints() *Builder {
 //}
 
 func (b *Builder) WithUsersAuth(svc *app.Service, jwtm *jwtauth.Manager) *Builder {
-	uh := handlers.NewUsersHandlers(b.log, svc, jwtm)
+	sessRepo := sessionpg.New(b.db)
+
+	uh := handlers.NewUsersHandlers(b.log, svc, jwtm, sessRepo)
 
 	v1 := b.r.Group("/v1")
 	u := v1.Group("/users")
 	{
+		// public
 		u.POST("/register", uh.Register)
 		u.POST("/login", uh.Login)
+		u.POST("/refresh", uh.Refresh)
+		u.POST("/logout", uh.Logout) // по refresh token, без auth
 
+		// protected
 		auth := u.Group("")
 		auth.Use(handlers.Auth(b.log, jwtm))
 		auth.GET("/me", uh.Me)
+		auth.POST("/logout_all", uh.LogoutAll)
 	}
 	return b
 }

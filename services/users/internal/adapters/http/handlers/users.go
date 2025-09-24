@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"errors"
 	"goshop/pkg/jwtauth"
+	"goshop/services/users/internal/adapters/repo/sessionpg"
+	"net"
 	"net/http"
 	"time"
 
@@ -15,13 +18,14 @@ import (
 )
 
 type UsersHandlers struct {
-	log  *slog.Logger
-	svc  *app.Service
-	jwtm *jwtauth.Manager
+	log      *slog.Logger
+	svc      *app.Service
+	jwtm     *jwtauth.Manager
+	sessions *sessionpg.Repo
 }
 
-func NewUsersHandlers(log *slog.Logger, svc *app.Service, jwtm *jwtauth.Manager) *UsersHandlers {
-	return &UsersHandlers{log: log, svc: svc, jwtm: jwtm}
+func NewUsersHandlers(log *slog.Logger, svc *app.Service, jwtm *jwtauth.Manager, sess *sessionpg.Repo) *UsersHandlers {
+	return &UsersHandlers{log: log, svc: svc, jwtm: jwtm, sessions: sess}
 }
 
 type registerReq struct {
@@ -103,9 +107,38 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 		return
 	}
 
-	access, refresh, err := h.jwtm.GeneratePair(u.ID.String(), u.Email)
+	//Генерим пару токенов + JTI refresh
+	access, refresh, jti, err := h.jwtm.GeneratePair(u.ID.String(), u.Email)
 	if err != nil {
 		h.log.Error("jwt.GeneratePair failed", slog.Any("err", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	//Достаём exp из только что выпущенного refresh
+	claims, err := h.jwtm.ParseAndVerify(refresh)
+	if err != nil || claims.ExpiresAt == nil {
+		h.log.Error("jwt.ParseAndVerify(refresh) failed", slog.Any("err", err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	expiresAt := claims.ExpiresAt.Time
+
+	//Сохраняем сессию в PG (храним ток хеш refresh)
+	hash := sha256.Sum256([]byte(refresh))
+	ua := c.Request.UserAgent()
+	ip := net.ParseIP(c.ClientIP())
+
+	if _, err := h.sessions.CreateSession(
+		c.Request.Context(),
+		jti,
+		u.ID,
+		hash[:],
+		expiresAt,
+		ua,
+		ip,
+	); err != nil {
+		h.log.Error("sessions.CreateSession failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
