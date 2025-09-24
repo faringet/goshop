@@ -35,7 +35,8 @@ ___
 
 ___
 
-### Users
+## Users
+### Регистрация
 
 * POST ```/v1/users/register```
 
@@ -61,16 +62,17 @@ ___
 
 **Ошибки:**
 
-400 {"error":"invalid email"} - невалидная почта
+400 {"error":"invalid email"}
 
-400 {"error":"weak password"} - слишком короткий пароль (минимум 8)
+400 {"error":"weak password"} - минимум 8 символов
 
-409 {"error":"email already taken"} - email уже занят
+409 {"error":"email already taken"}
 
-500 {"error":"internal error"} - иное
+500 {"error":"internal error"}
 
 ___
 
+### Логин
 * POST ```/v1/users/login```
 
 **Request:**
@@ -95,12 +97,13 @@ ___
 
 **Ошибки:**
 
-401 {"error":"invalid credentials"} — неверная почта/пароль/пользователь
+401 {"error":"invalid credentials"}
 
-500 {"error":"internal error"} — внутренняя ошибка
+500 {"error":"internal error"}
 
 ___
 
+### Текущий юзер
 * GET ```/v1/users/me```
 
 **Request:**
@@ -124,9 +127,77 @@ Authorization: Bearer <JWT_ACCESS>
 
 **Ошибки:**
 
-401 {"error":"unauthorized"} - отсутствует/неверный/просроченный токен
+401 {"error":"unauthorized"}
 
-401 {"error":"invalid token"} - битый формат и т.п.
+401 {"error":"invalid token"}
+
+___
+
+### Обновление токенов 
+* POST ```/v1/users/refresh```
+
+**Request:**
+```json
+  "refresh_token": "<JWT_REFRESH>"
+```
+
+**Response:**
+```json
+200 ok
+
+{
+  "access_token":  "<NEW_JWT_ACCESS>",
+  "refresh_token": "<NEW_JWT_REFRESH>",
+  "token_type":    "Bearer",
+  "expires_in":    900
+}
+```
+
+___
+
+### Выход с одного устройства
+* POST ```/v1/users/logout```
+
+**Request:**
+```json
+  "refresh_token": "<JWT_REFRESH>"
+```
+
+**Response:**
+```json
+204
+```
+
+**Поведение**
+
+* инвалидирует одну сессию 
+
+* действующие access-токены этой сессии останутся валидны до ```exp```
+
+___
+
+### Выход со всех устройств
+* POST ```/v1/users/logout_all```
+
+**Request:**
+```json
+Authorization: Bearer <JWT_ACCESS>
+```
+
+**Response:**
+```json
+200 ok
+
+{ "revoked": 3 }
+```
+
+```revoked``` - сколько активных сессий отозвано
+
+**Поведение**
+
+* инвалидирует одну сессию
+
+* действующие access-токены этой сессии останутся валидны до ```exp```
 
 
 ## Дефолтные миграции:
