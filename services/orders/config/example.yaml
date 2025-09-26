@@ -1,4 +1,4 @@
-app_name: "users"
+app_name: "orders"
 
 http:
   addr:
@@ -18,20 +18,6 @@ postgres:
   conn_life:
   health_ping:
 
-redis:
-  addr:
-  db:
-
-jwt:
-  secret:
-  issuer:
-  access_ttl:
-  refresh_ttl:
-
 logger:
   level:
   json:
-
-telemetry:
-  otlp_endpoint:
-  sample_ratio: 0.

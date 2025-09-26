@@ -1,0 +1,28 @@
+app_name: "outboxer"
+
+logger:
+  level:
+  json:
+
+postgres:
+  host:
+  port:
+  user:
+  password:
+  dbname:
+  sslmode:
+  max_conns:
+  min_conns:
+  conn_life:
+  health_ping:
+
+kafka:
+  brokers:
+    -
+
+worker:
+  batch_size: 100          # событий за тик
+  poll_interval: 1s        # пауза между циклами, если нет работы
+  produce_timeout: 3s      # таймаут на отправку в Kafka
+  max_retries: 10          # скок траев перед алертом
+  backoff_base_ms: 500     # экспоненциальный бэкофф: base * 2^retries (по идее с 10 траев пауза ≈ 8 мин 32 сек)
