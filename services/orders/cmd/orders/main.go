@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"goshop/pkg/logger"
 	"goshop/pkg/postgres"
 	"goshop/services/orders/config"
 	httpserver "goshop/services/orders/internal/adapters/http"
 	"goshop/services/orders/internal/adapters/repo/orderpg"
-	"net/http"
+	"goshop/services/orders/internal/consumer"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -41,23 +43,56 @@ func main() {
 		WithOrders(repo).
 		Build()
 
-	// Graceful shutdown (Ctrl+C / SIGTERM)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("http: listen failed", "err", err)
 			stop()
 		}
 	}()
 
-	<-ctx.Done()
-	log.Info("shutdown: received signal, stopping...")
+	// Kafka consumer (orders читает payments.events)
+	kopts := []kgo.Opt{
+		kgo.SeedBrokers(cfg.Kafka.Brokers...),
+		kgo.DialTimeout(2 * time.Second),
+		kgo.ClientID("orders"),
+		kgo.ConsumerGroup(cfg.Consumer.Group),
+		kgo.ConsumeTopics(cfg.Consumer.Topic),
+	}
+	kc, err := kgo.NewClient(kopts...)
+	if err != nil {
+		log.Error("kafka: client init failed", "err", err)
+		os.Exit(1)
+	}
+	defer kc.Close()
 
+	// Процессор: применяем payment.confirmed/failed → orders.status
+	proc := consumer.NewProcessor(log, pool)
+
+	// Раннер консюмера
+	rcfg := consumer.Config{
+		Group:            cfg.Consumer.Group,
+		Topic:            cfg.Consumer.Topic,
+		SessionTimeout:   cfg.Consumer.SessionTimeout,
+		RebalanceTimeout: cfg.Consumer.RebalanceTimeout,
+	}
+	r := consumer.New(log, pool, kc, rcfg, proc)
+
+	// Запускаем консюмер в горутине
+	go func() {
+		if err := r.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("orders-consumer: stopped with error", "err", err)
+			stop()
+		}
+	}()
+
+	// Ожидаем сигнал
+	<-ctx.Done()
+	log.Info("shutdown: stopping...")
+
+	// Аккуратный стоп HTTP
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	_ = srv.Shutdown(shutdownCtx)
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("http: graceful shutdown failed", "err", err)
-	} else {
-		log.Info("http: server stopped cleanly")
-	}
+	log.Info("stopped cleanly")
 }

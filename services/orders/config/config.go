@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	cfg "goshop/pkg/config"
 
@@ -11,11 +12,19 @@ import (
 )
 
 type Orders struct {
-	AppName   string        `mapstructure:"app_name"`
-	HTTP      cfg.HTTP      `mapstructure:"http"`
-	Postgres  cfg.Postgres  `mapstructure:"postgres"`
-	Logger    cfg.Logger    `mapstructure:"logger"`
-	Telemetry cfg.Telemetry `mapstructure:"telemetry"`
+	AppName  string       `mapstructure:"app_name"`
+	HTTP     cfg.HTTP     `mapstructure:"http"`
+	Postgres cfg.Postgres `mapstructure:"postgres"`
+	Logger   cfg.Logger   `mapstructure:"logger"`
+	Kafka    cfg.Kafka    `mapstructure:"kafka"`
+	Consumer Consumer     `mapstructure:"consumer"`
+}
+
+type Consumer struct {
+	Group            string        `mapstructure:"group"`
+	Topic            string        `mapstructure:"topic"`
+	SessionTimeout   time.Duration `mapstructure:"session_timeout"`
+	RebalanceTimeout time.Duration `mapstructure:"rebalance_timeout"`
 }
 
 func (o *Orders) Validate() error {

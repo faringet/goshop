@@ -39,4 +39,6 @@ tmp/
 services/users/config/defaults.yaml
 services/orders/config/defaults.yaml
 services/outboxer/config/defaults.yaml
+services/payments/config/defaults.yaml
+
 

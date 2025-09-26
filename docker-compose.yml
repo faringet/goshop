@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  zookeeper:
+    image: bitnami/zookeeper:3.9.2
+    container_name: zookeeper
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_4LW_COMMANDS_WHITELIST=ruok,srvr,mntr,conf,stat
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "echo ruok | nc -w 2 127.0.0.1 2181 | grep -q imok"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+    networks: [kafka-net]
+    restart: unless-stopped
+
+  kafka:
+    image: bitnami/kafka:3.6.2
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      # ZooKeeper-режим
+      - KAFKA_ENABLE_KRAFT=no
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+
+      # ДВА листенера: внутренний (PLAINTEXT) и внешний (EXTERNAL)
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:29092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+
+      # В проде правильней false; топики создаём через kafka-init
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+    ports:
+      - "9092:9092"     # для контейнеров/health внутри моста — не обязателен наружу, но оставим
+      - "29092:29092"   # стабильная точка снаружи: localhost:29092
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks: [kafka-net]
+    restart: unless-stopped
+
+  kafka-init:
+    image: bitnami/kafka:3.6.2
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "
+      set -e;
+      echo 'Creating topics...';
+      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --topic orders.events --partitions 3 --replication-factor 1 || true;
+      /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --topic payments.events --partitions 3 --replication-factor 1 || true;
+      echo 'Done.';
+      "
+    networks: [kafka-net]
+    restart: "no"
+
+networks:
+  kafka-net: {}
+
+volumes:
+  zookeeper_data: {}
+  kafka_data: {}
