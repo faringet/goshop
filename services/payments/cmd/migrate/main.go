@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/pressly/goose/v3"
-	"goshop/services/users/config"
+	"goshop/services/payments/config"
 	"os"
 	"time"
 
