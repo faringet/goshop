@@ -2,16 +2,19 @@ package httpserver
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
-	pcfg "goshop/pkg/config"
-	"goshop/pkg/jwtauth"
-	"goshop/services/users/internal/adapters/http/handlers"
-	"goshop/services/users/internal/adapters/repo/sessionpg"
-	"goshop/services/users/internal/app"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	pcfg "goshop/pkg/config"
+	"goshop/pkg/jwtauth"
+
+	"goshop/services/users/internal/adapters/http/handlers"
+	"goshop/services/users/internal/adapters/repo/sessionpg"
+	"goshop/services/users/internal/app"
 )
 
 type Builder struct {
@@ -23,10 +26,12 @@ type Builder struct {
 
 func NewBuilder(cfg pcfg.HTTP, log *slog.Logger) *Builder {
 	gin.SetMode(gin.ReleaseMode)
+
 	r := gin.New()
 	r.Use(requestID())
 	r.Use(ginLogger(log))
 	r.Use(ginRecovery(log))
+
 	return &Builder{cfg: cfg, log: log, r: r}
 }
 
@@ -77,7 +82,6 @@ func (b *Builder) WithDefaultEndpoints() *Builder {
 
 func (b *Builder) WithUsersAuth(svc *app.Service, jwtm *jwtauth.Manager) *Builder {
 	sessRepo := sessionpg.New(b.db)
-
 	uh := handlers.NewUsersHandlers(b.log, svc, jwtm, sessRepo)
 
 	v1 := b.r.Group("/v1")
