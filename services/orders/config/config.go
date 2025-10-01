@@ -3,12 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	cfg "goshop/pkg/config"
-
-	"github.com/spf13/viper"
 )
 
 type Orders struct {
@@ -37,48 +34,15 @@ func (o *Orders) Validate() error {
 	return nil
 }
 
-func Load() (*Orders, error) {
-	v := viper.New()
-	v.SetConfigType("yaml")
-	v.SetEnvPrefix("ORDERS") // <-- свой префикс
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	v.SetConfigFile("./services/orders/config/defaults.yaml")
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read defaults.yaml: %w", err)
-	}
-
-	ov := viper.New()
-	ov.SetConfigType("yaml")
-	ov.AddConfigPath("./")
-	ov.AddConfigPath("./configs")
-	ov.AddConfigPath("/etc/goshop")
-	for _, name := range []string{"orders", "config"} {
-		ov.SetConfigName(name)
-		if err := ov.ReadInConfig(); err == nil {
-			if err := v.MergeConfigMap(ov.AllSettings()); err != nil {
-				return nil, fmt.Errorf("merge %s.yaml: %w", name, err)
-			}
-			break
-		}
-	}
-
-	var cfg Orders
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal orders config: %w", err)
-	}
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid orders config: %w", err)
-	}
-	cfg.Logger.AppName = cfg.AppName
-	return &cfg, nil
-}
-
-func NewConfig() *Orders {
-	c, err := Load()
-	if err != nil {
-		panic(err)
-	}
+// New — грузим конфиг по схеме: файлы -> ENV (с префиксом ORDERS_)
+func New() *Orders {
+	c := cfg.MustLoad[Orders](cfg.Options{
+		Paths:         []string{"./services/orders/config", "./configs", "/etc/goshop"},
+		Names:         []string{"defaults", "orders", "config"},
+		Type:          "yaml",
+		EnvPrefix:     "ORDERS",
+		OptionalFiles: true, // false - требовать хотя бы один файл
+	})
+	c.Logger.AppName = c.AppName
 	return c
 }
