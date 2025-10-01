@@ -44,16 +44,14 @@ func (u Users) Redact() any {
 	return u
 }
 
-// New — загружает конфиг по схеме: файлы -> ENV.
-// Файлы ищутся по путям в указанном порядке; каждый следующий перекрывает предыдущий.
-// Поверх файлов всегда применяются переменные окружения с префиксом USERS_.
+// New — грузим конфиг по схеме: файлы -> ENV (с префиксом USERS_)
 func New() *Users {
 	c := cfg.MustLoad[Users](cfg.Options{
 		Paths:         []string{"./services/users/config", "./configs", "/etc/goshop"},
-		Names:         []string{"defaults", "users", "config"}, // можно упростить до {"users"} при желании
+		Names:         []string{"defaults", "users", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "USERS",
-		OptionalFiles: true, // поставь false, если хочешь требовать хотя бы один файл
+		OptionalFiles: true, // false - требовать хотя бы один файл
 	})
 	c.Logger.AppName = c.AppName
 	return c
