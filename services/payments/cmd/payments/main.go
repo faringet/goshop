@@ -18,7 +18,7 @@ func main() {
 	defer stop()
 
 	// Config
-	cfg := config.NewConfig()
+	cfg := config.New()
 
 	// Logger
 	log := logger.NewPrettyLogger(cfg.Logger)
