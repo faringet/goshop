@@ -3,11 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"strings"
-
 	cfg "goshop/pkg/config"
-
-	"github.com/spf13/viper"
 )
 
 type Users struct {
@@ -42,49 +38,21 @@ func (u *Users) Validate() error {
 	return nil
 }
 
-func Load() (*Users, error) {
-	v := viper.New()
-	v.SetConfigType("yaml")
-	v.SetEnvPrefix("USERS")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	v.SetConfigFile("./services/users/config/defaults.yaml")
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read defaults.yaml: %w", err)
-	}
-
-	ov := viper.New()
-	ov.SetConfigType("yaml")
-	ov.AddConfigPath("./")
-	ov.AddConfigPath("./configs")
-	ov.AddConfigPath("/etc/goshop")
-	for _, name := range []string{"users", "config"} {
-		ov.SetConfigName(name)
-		if err := ov.ReadInConfig(); err == nil {
-			if err := v.MergeConfigMap(ov.AllSettings()); err != nil {
-				return nil, fmt.Errorf("merge %s.yaml: %w", name, err)
-			}
-			break
-		}
-	}
-
-	var cfg Users
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal users config: %w", err)
-	}
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid users config: %w", err)
-	}
-	cfg.Logger.AppName = cfg.AppName
-	return &cfg, nil
+func (u Users) Redact() any {
+	u.JWT.Secret = "***"
+	u.Postgres.Password = "***"
+	return u
 }
 
-// NewConfig (defaults.yaml → users.yaml → ENV USERS_*)
-func NewConfig() *Users {
-	c, err := Load()
-	if err != nil {
-		panic(err)
-	}
+// New — грузим конфиг по схеме: файлы -> ENV (с префиксом USERS_)
+func New() *Users {
+	c := cfg.MustLoad[Users](cfg.Options{
+		Paths:         []string{"./services/users/config", "./configs", "/etc/goshop"},
+		Names:         []string{"defaults", "users", "config"},
+		Type:          "yaml",
+		EnvPrefix:     "USERS",
+		OptionalFiles: true, // false - требовать хотя бы один файл
+	})
+	c.Logger.AppName = c.AppName
 	return c
 }

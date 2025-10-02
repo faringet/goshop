@@ -24,10 +24,6 @@ func NewHealthHandlers(log *slog.Logger, db *pgxpool.Pool) *HealthHandlers {
 	return &HealthHandlers{log: log, db: db}
 }
 
-func noCache(c *gin.Context) {
-	c.Header("Cache-Control", "no-store")
-}
-
 func (h *HealthHandlers) Live(c *gin.Context) {
 	noCache(c)
 	c.String(http.StatusOK, "ok")

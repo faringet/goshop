@@ -1,65 +1,83 @@
 package config
 
-//type Options struct {
-//	Paths        []string // например: []string{"./", "./configs", "/etc/goshop"}
-//	Names        []string // например: []string{"config", "users"}
-//	Type         string
-//	EnvPrefix    string
-//	Defaults     map[string]any
-//	OptionalFile bool
-//}
-//
-//func Load[T any](opts Options) (T, error) {
-//	var cfg T
-//
-//	v := viper.New()
-//
-//	cfgType := opts.Type
-//	if cfgType == "" {
-//		cfgType = "yaml"
-//	}
-//	v.SetConfigType(cfgType)
-//
-//	for _, p := range opts.Paths {
-//		if p != "" {
-//			v.AddConfigPath(p)
-//		}
-//	}
-//	foundFile := false
-//	for _, name := range opts.Names {
-//		if name == "" {
-//			continue
-//		}
-//		v.SetConfigName(name)
-//		if err := v.ReadInConfig(); err == nil {
-//			foundFile = true
-//			break
-//		}
-//	}
-//	if !foundFile && !opts.OptionalFile {
-//		return cfg, fmt.Errorf("config file not found in paths %v for names %v", opts.Paths, opts.Names)
-//	}
-//
-//	for k, val := range opts.Defaults {
-//		v.SetDefault(k, val)
-//	}
-//
-//	if opts.EnvPrefix != "" {
-//		v.SetEnvPrefix(opts.EnvPrefix)
-//	}
-//	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-//	v.AutomaticEnv()
-//
-//	if err := v.Unmarshal(&cfg); err != nil {
-//		return cfg, fmt.Errorf("unmarshal config: %w", err)
-//	}
-//
-//	return cfg, nil
-//}
-//
-//func Require(cond bool, msg string) error {
-//	if !cond {
-//		return errors.New(msg)
-//	}
-//	return nil
-//}
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/viper"
+)
+
+type Validatable interface{ Validate() error }
+
+type Options struct {
+	Paths         []string
+	Names         []string
+	Type          string
+	EnvPrefix     string
+	OptionalFiles bool
+}
+
+func Load[T any](opts Options) (T, error) {
+	var zero T
+	var cfg T
+
+	v := viper.New()
+	typ := opts.Type
+	if typ == "" {
+		typ = "yaml"
+	}
+	v.SetConfigType(typ)
+
+	foundAny := false
+	fv := viper.New()
+	fv.SetConfigType(typ)
+
+	for _, p := range opts.Paths {
+		if p != "" {
+			fv.AddConfigPath(p)
+		}
+	}
+
+	for _, name := range opts.Names {
+		if name == "" {
+			continue
+		}
+		fv.SetConfigName(name)
+		if err := fv.ReadInConfig(); err == nil {
+			if err := v.MergeConfigMap(fv.AllSettings()); err != nil {
+				return zero, fmt.Errorf("merge %s: %w", name, err)
+			}
+			foundAny = true
+		}
+	}
+
+	if !foundAny && !opts.OptionalFiles && len(opts.Names) > 0 {
+		return zero, fmt.Errorf("config files not found in %v for names %v", opts.Paths, opts.Names)
+	}
+
+	if opts.EnvPrefix != "" {
+		v.SetEnvPrefix(opts.EnvPrefix)
+	}
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	if err := v.Unmarshal(&cfg); err != nil {
+		return zero, fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	if vv, ok := any(&cfg).(Validatable); ok {
+		if err := vv.Validate(); err != nil {
+			return zero, fmt.Errorf("invalid config: %w", err)
+		}
+	}
+
+	return cfg, nil
+}
+
+func MustLoad[T any](opts Options) *T {
+	c, err := Load[T](opts)
+	if err != nil {
+		panic(err)
+	}
+	return &c
+}
