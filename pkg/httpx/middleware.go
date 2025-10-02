@@ -1,4 +1,4 @@
-package httpserver
+package httpx
 
 import (
 	"crypto/rand"
@@ -17,7 +17,7 @@ const (
 	CtxKeyLogger    = "req_logger"
 )
 
-func requestID() gin.HandlerFunc {
+func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.GetHeader(HeaderRequestID)
 		if rid == "" {
@@ -29,7 +29,7 @@ func requestID() gin.HandlerFunc {
 	}
 }
 
-func ginRecovery(log *slog.Logger) gin.HandlerFunc {
+func GinRecovery(log *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if rec := recover(); rec != nil {
@@ -52,7 +52,7 @@ func ginRecovery(log *slog.Logger) gin.HandlerFunc {
 	}
 }
 
-func ginLogger(log *slog.Logger) gin.HandlerFunc {
+func GinLogger(log *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 
@@ -96,4 +96,13 @@ func newReqID() string {
 	var b [12]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+func ReqLog(c *gin.Context, fallback *slog.Logger) *slog.Logger {
+	if rl, ok := c.Get(CtxKeyLogger); ok {
+		if l, ok := rl.(*slog.Logger); ok && l != nil {
+			return l
+		}
+	}
+	return fallback
 }

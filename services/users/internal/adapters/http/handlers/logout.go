@@ -6,6 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"log/slog"
+
+	"goshop/pkg/httpx"
 )
 
 type logoutReq struct {
@@ -15,12 +17,7 @@ type logoutReq struct {
 func (h *UsersHandlers) Logout(c *gin.Context) {
 	noCache(c)
 
-	l := h.log
-	if rl, ok := c.Get("req_logger"); ok {
-		if reqLog, ok := rl.(*slog.Logger); ok && reqLog != nil {
-			l = reqLog
-		}
-	}
+	l := ReqLog(c, h.log)
 
 	var in logoutReq
 	if err := c.ShouldBindJSON(&in); err != nil || in.RefreshToken == "" {
@@ -55,7 +52,7 @@ func (h *UsersHandlers) LogoutAll(c *gin.Context) {
 
 	l := ReqLog(c, h.log)
 
-	claims, ok := GetClaims(c)
+	claims, ok := httpx.GetJWTClaims(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return

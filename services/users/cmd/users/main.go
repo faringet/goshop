@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"goshop/pkg/httpx"
 	"goshop/pkg/jwtauth"
 	"goshop/pkg/logger"
 	"goshop/pkg/postgres"
 	"goshop/services/users/config"
-	httpserver "goshop/services/users/internal/adapters/http"
+	httpmod "goshop/services/users/internal/adapters/http"
 	"goshop/services/users/internal/adapters/repo/userpg"
 	"goshop/services/users/internal/app"
 )
@@ -55,22 +56,24 @@ func main() {
 
 	// JWT
 	jwtm := jwtauth.New(jwtauth.Config{
-		Secret:     cfg.JWT.Secret,
-		Issuer:     cfg.JWT.Issuer,
-		AccessTTL:  cfg.JWT.AccessTTL,
-		RefreshTTL: cfg.JWT.RefreshTTL,
+		Secret:          cfg.JWT.Secret,
+		Issuer:          cfg.JWT.Issuer,
+		AccessTTL:       cfg.JWT.AccessTTL,
+		RefreshTTL:      cfg.JWT.RefreshTTL,
+		AccessAudience:  cfg.JWT.AccessAudience,
+		RefreshAudience: cfg.JWT.RefreshAudience,
 	})
-	log.Info("jwt: initialized", "issuer", cfg.JWT.Issuer, "access_ttl", cfg.JWT.AccessTTL, "refresh_ttl", cfg.JWT.RefreshTTL)
+	log.Info("jwt: verifier initialized", "issuer", cfg.JWT.Issuer)
 
-	// HTTP server
-	srv := httpserver.
-		NewBuilder(cfg.HTTP, log).
-		WithDB(pool).
-		WithDefaultEndpoints().
-		WithUsersAuth(svc, jwtm).
-		Build()
+	// HTTP module
+	usersHTTP := httpmod.NewModule(log, pool, svc, jwtm)
 
-	// Graceful shutdown
+	// HTTP server with modules
+	srv := httpx.NewServer(cfg.HTTP, log,
+		httpx.WithModules(usersHTTP),
+	)
+
+	// HTTP Listen
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("http: listen failed", "err", err)
@@ -78,9 +81,11 @@ func main() {
 		}
 	}()
 
+	// Wait for signal
 	<-ctx.Done()
 	log.Info("shutdown: received signal, stopping...")
 
+	// graceful HTTP
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

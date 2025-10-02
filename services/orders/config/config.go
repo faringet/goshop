@@ -15,6 +15,7 @@ type Orders struct {
 	Logger   cfg.Logger   `mapstructure:"logger"`
 	Kafka    cfg.Kafka    `mapstructure:"kafka"`
 	Consumer Consumer     `mapstructure:"consumer"`
+	JWT      cfg.JWT      `mapstructure:"jwt"`
 }
 
 type Consumer struct {
@@ -30,6 +31,9 @@ func (o *Orders) Validate() error {
 	}
 	if err := o.Postgres.Validate(); err != nil {
 		return fmt.Errorf("postgres: %w", err)
+	}
+	if o.JWT.Secret == "" {
+		return errors.New("jwt.secret is required (for token verification)")
 	}
 	return nil
 }

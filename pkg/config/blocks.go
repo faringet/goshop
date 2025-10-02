@@ -112,10 +112,12 @@ func (k *Kafka) Validate() error {
 }
 
 type JWT struct {
-	Secret     string        `mapstructure:"secret"`
-	Issuer     string        `mapstructure:"issuer"`
-	AccessTTL  time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
+	Secret          string        `mapstructure:"secret"`
+	Issuer          string        `mapstructure:"issuer"`
+	AccessTTL       time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL      time.Duration `mapstructure:"refresh_ttl"`
+	AccessAudience  string        `mapstructure:"access_audience"`
+	RefreshAudience string        `mapstructure:"refresh_audience"`
 }
 
 type Logger struct {

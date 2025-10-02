@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"goshop/pkg/httpx"
+	"goshop/pkg/jwtauth"
 	"goshop/pkg/logger"
 	"goshop/pkg/postgres"
 	"goshop/services/orders/config"
-	httpserver "goshop/services/orders/internal/adapters/http"
+	"goshop/services/orders/internal/adapters/http"
 	"goshop/services/orders/internal/adapters/repo/orderpg"
 	"goshop/services/orders/internal/consumer"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,6 +20,9 @@ import (
 )
 
 func main() {
+	start := time.Now()
+
+	// OS signals
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -37,18 +43,22 @@ func main() {
 	repo := orderpg.NewRepo(pool)
 	_ = repo
 
-	srv := httpserver.NewBuilder(cfg.HTTP, log).
-		WithDB(pool).
-		WithDefaultEndpoints().
-		WithOrders(repo).
-		Build()
+	// JWT
+	jwtm := jwtauth.New(jwtauth.Config{
+		Secret:     cfg.JWT.Secret,
+		Issuer:     cfg.JWT.Issuer,
+		AccessTTL:  cfg.JWT.AccessTTL,
+		RefreshTTL: cfg.JWT.RefreshTTL,
+	})
+	log.Info("jwt: verifier initialized", "issuer", cfg.JWT.Issuer)
 
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, context.Canceled) {
-			log.Error("http: listen failed", "err", err)
-			stop()
-		}
-	}()
+	// HTTP module
+	ordersHTTP := httpadp.NewModule(log, pool, repo, jwtm)
+
+	// HTTP server with modules
+	srv := httpx.NewServer(cfg.HTTP, log,
+		httpx.WithModules(ordersHTTP),
+	)
 
 	// Kafka consumer (orders читает payments.events)
 	kopts := []kgo.Opt{
@@ -85,14 +95,26 @@ func main() {
 		}
 	}()
 
-	// Ожидаем сигнал
-	<-ctx.Done()
-	log.Info("shutdown: stopping...")
+	// HTTP Listen
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("http: listen failed", "err", err)
+			stop()
+		}
+	}()
 
-	// Аккуратный стоп HTTP
+	// Wait for signal
+	<-ctx.Done()
+	log.Info("shutdown: received signal, stopping...")
+
+	// graceful HTTP
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("http: graceful shutdown failed", "err", err)
+	} else {
+		log.Info("http: server stopped cleanly")
+	}
 
-	log.Info("stopped cleanly")
+	log.Info("bye", "uptime", time.Since(start), "pid", os.Getpid())
 }
