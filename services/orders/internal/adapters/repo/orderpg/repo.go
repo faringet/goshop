@@ -112,7 +112,7 @@ func (r *Repository) Create(ctx context.Context, p CreateParams) (*Order, error)
 	}
 
 	const insOutbox = `
-		INSERT INTO outbox (agg_type, agg_id, topic, key, headers, payload)
+		INSERT INTO orders_outbox (agg_type, agg_id, topic, key, headers, payload)
 		VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb);
 	`
 	key := ord.ID[:]

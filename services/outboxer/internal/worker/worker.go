@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	OutboxTable    string
 	BatchSize      int
 	PollInterval   time.Duration
 	ProduceTimeout time.Duration
@@ -25,9 +26,13 @@ type Worker struct {
 	db  *pgxpool.Pool
 	kc  *kgo.Client
 	cfg Config
+	tbl string
 }
 
 func New(db *pgxpool.Pool, kc *kgo.Client, cfg Config) *Worker {
+	if cfg.OutboxTable == "" {
+		cfg.OutboxTable = "outbox"
+	}
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 100
 	}
@@ -40,7 +45,7 @@ func New(db *pgxpool.Pool, kc *kgo.Client, cfg Config) *Worker {
 	if cfg.BackoffBaseMS <= 0 {
 		cfg.BackoffBaseMS = 500
 	}
-	return &Worker{db: db, kc: kc, cfg: cfg}
+	return &Worker{db: db, kc: kc, cfg: cfg, tbl: cfg.OutboxTable}
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -66,18 +71,18 @@ func (w *Worker) processBatch(ctx context.Context) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	const sel = `
+	sel := fmt.Sprintf(`
 SELECT id, topic, key, headers, payload, retries
-FROM outbox
+FROM %s
 WHERE published_at IS NULL
   AND (available_at IS NULL OR available_at <= now())
 ORDER BY id
 FOR UPDATE SKIP LOCKED
-LIMIT $1;
-`
+LIMIT $1;`, w.tbl)
+
 	rows, err := tx.Query(ctx, sel, w.cfg.BatchSize)
 	if err != nil {
-		return fmt.Errorf("select outbox: %w", err)
+		return fmt.Errorf("select %s: %w", w.tbl, err)
 	}
 	defer rows.Close()
 
@@ -117,13 +122,12 @@ LIMIT $1;
 		for _, h := range hs {
 			khs = append(khs, kgo.RecordHeader{Key: h.K, Value: []byte(h.V)})
 		}
-		rec := &kgo.Record{
+		records = append(records, &kgo.Record{
 			Topic:   it.topic,
 			Key:     it.key,
 			Value:   it.payload,
 			Headers: khs,
-		}
-		records = append(records, rec)
+		})
 	}
 
 	pctx, cancel := context.WithTimeout(ctx, w.cfg.ProduceTimeout)
@@ -135,28 +139,34 @@ LIMIT $1;
 		if res.Err != nil {
 			backoff := time.Duration(w.cfg.BackoffBaseMS) * time.Millisecond
 			for j := 0; j < it.retries; j++ {
-				backoff *= 2 // экспонента
+				backoff *= 2
 				if backoff > 5*time.Minute {
 					backoff = 5 * time.Minute
 					break
 				}
 			}
 
-			const fail = `
-UPDATE outbox
+			fail := fmt.Sprintf(`
+UPDATE %s
 SET retries = retries + 1,
-    available_at = now() + $2 * interval '1 millisecond'
-WHERE id = $1;
-`
-			if _, err := tx.Exec(ctx, fail, it.id, backoff.Milliseconds()); err != nil {
-				return fmt.Errorf("mark fail: %w", err)
+    error = $2,
+    available_at = now() + $3 * interval '1 millisecond'
+WHERE id = $1;`, w.tbl)
+
+			if _, err := tx.Exec(ctx, fail, it.id, res.Err.Error(), backoff.Milliseconds()); err != nil {
+				return fmt.Errorf("mark fail %s: %w", w.tbl, err)
 			}
 			continue
 		}
 
-		const ok = `UPDATE outbox SET published_at = now() WHERE id = $1;`
+		ok := fmt.Sprintf(`
+UPDATE %s
+SET published_at = now(),
+    error = NULL
+WHERE id = $1;`, w.tbl)
+
 		if _, err := tx.Exec(ctx, ok, it.id); err != nil {
-			return fmt.Errorf("mark ok: %w", err)
+			return fmt.Errorf("mark ok %s: %w", w.tbl, err)
 		}
 	}
 

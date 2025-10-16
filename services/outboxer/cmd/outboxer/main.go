@@ -11,11 +11,13 @@ import (
 	"goshop/services/outboxer/internal/worker"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
 
 func main() {
+	start := time.Now()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -24,6 +26,7 @@ func main() {
 
 	// Logger
 	log := logger.NewPrettyLogger(cfg.Logger)
+	log.Info("boot: starting outboxer", "workers", len(cfg.AllWorkers()))
 
 	// Postgres
 	pool, err := postgres.NewPool(ctx, cfg.Postgres)
@@ -65,26 +68,51 @@ func main() {
 		"topics", len(md.Topics),
 	)
 
-	wcfg := worker.Config{
-		BatchSize:      cfg.Worker.BatchSize,
-		PollInterval:   cfg.Worker.PollInterval,
-		ProduceTimeout: cfg.Worker.ProduceTimeout,
-		MaxRetries:     cfg.Worker.MaxRetries,
-		BackoffBaseMS:  cfg.Worker.BackoffBaseMS,
-	}
-
-	wr := worker.New(pool, kc, wcfg)
-
-	log.Info("outboxer: starting loop",
-		"batch_size", wcfg.BatchSize,
-		"poll", wcfg.PollInterval,
+	// Поднимаем все воркеры параллельно
+	var (
+		wg        sync.WaitGroup
+		errCh     = make(chan error, len(cfg.AllWorkers()))
+		cancelAll context.CancelFunc
 	)
+	ctx, cancelAll = context.WithCancel(ctx)
+	defer cancelAll()
 
-	log.Info("outboxer: starting loop", "batch_size", wcfg.BatchSize, "poll", wcfg.PollInterval)
-	if err := wr.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		log.Error("outboxer: stopped with error", "err", err)
-		os.Exit(1)
+	for _, w := range cfg.AllWorkers() {
+		wc := worker.Config{
+			OutboxTable:    w.OutboxTable,
+			BatchSize:      w.BatchSize,
+			PollInterval:   w.PollInterval,
+			ProduceTimeout: w.ProduceTimeout,
+			MaxRetries:     w.MaxRetries,
+			BackoffBaseMS:  w.BackoffBaseMS,
+		}
+		wr := worker.New(pool, kc, wc)
+
+		wg.Add(1)
+		go func(tbl string) {
+			defer wg.Done()
+			log.Info("outboxer: worker starting", "table", tbl, "poll", wc.PollInterval, "batch", wc.BatchSize)
+			if err := wr.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Error("outboxer: worker stopped with error", "table", tbl, "err", err)
+				errCh <- err
+				cancelAll()
+				return
+			}
+			log.Info("outboxer: worker stopped", "table", tbl)
+		}(w.OutboxTable)
 	}
-	log.Info("outboxer: stopped")
+
+	// Ждём либо первый фатальный еррор, либо сигнал
+	select {
+	case <-ctx.Done():
+		log.Info("shutdown: stopping workers...")
+	case err := <-errCh:
+		log.Error("shutdown: error from worker", "err", err)
+	}
+
+	// Тушим и ждём
+	cancelAll()
+	wg.Wait()
+	log.Info("bye", "uptime", time.Since(start))
 
 }
