@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/pressly/goose/v3"
-	"goshop/services/users/config"
+	"goshop/services/payments/config"
 	"os"
 	"time"
 
@@ -26,7 +26,7 @@ func main() {
 	cmd := flag.Arg(0)
 	args := flag.Args()[1:]
 
-	cfg := config.NewConfig()
+	cfg := config.New()
 
 	dsn := cfg.Postgres.DSN()
 	db, err := sql.Open("pgx", dsn)

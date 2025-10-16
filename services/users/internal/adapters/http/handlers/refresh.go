@@ -24,6 +24,8 @@ type refreshResp struct {
 func (h *UsersHandlers) Refresh(c *gin.Context) {
 	noCache(c)
 
+	l := ReqLog(c, h.log)
+
 	var in refreshReq
 	if err := c.ShouldBindJSON(&in); err != nil || in.RefreshToken == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -32,7 +34,7 @@ func (h *UsersHandlers) Refresh(c *gin.Context) {
 
 	claims, err := h.jwtm.ParseAndVerify(in.RefreshToken)
 	if err != nil || claims == nil || claims.ID == "" || claims.Subject == "" || claims.ExpiresAt == nil {
-		h.log.Warn("refresh: token verify failed", slog.Any("err", err))
+		l.Warn("refresh: token verify failed", slog.Any("err", err))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return
 	}
@@ -51,13 +53,13 @@ func (h *UsersHandlers) Refresh(c *gin.Context) {
 
 	access, newRefresh, newJTI, err := h.jwtm.GeneratePair(userID.String(), claims.Email)
 	if err != nil {
-		h.log.Error("refresh: GeneratePair failed", slog.Any("err", err))
+		l.Error("refresh: GeneratePair failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 	newClaims, err := h.jwtm.ParseAndVerify(newRefresh)
 	if err != nil || newClaims.ExpiresAt == nil {
-		h.log.Error("refresh: ParseAndVerify(new) failed", slog.Any("err", err))
+		l.Error("refresh: ParseAndVerify(new) failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -82,11 +84,11 @@ func (h *UsersHandlers) Refresh(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
 			return
 		case sessionpg.ErrRefreshReuse:
-			h.log.Warn("refresh reuse detected", slog.String("session_id", oldID.String()))
+			l.Warn("refresh reuse detected", slog.String("session_id", oldID.String()))
 			c.JSON(http.StatusConflict, gin.H{"error": "refresh token reused"})
 			return
 		default:
-			h.log.Error("refresh: RotateSession failed", slog.Any("err", err))
+			l.Error("refresh: RotateSession failed", slog.Any("err", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}

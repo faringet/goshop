@@ -3,83 +3,61 @@ package config
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	cfg "goshop/pkg/config"
-
-	"github.com/spf13/viper"
 )
 
-type OutboxerConfig struct {
+type Outboxer struct {
 	AppName  string       `mapstructure:"app_name"`
 	Postgres cfg.Postgres `mapstructure:"postgres"`
 	Logger   cfg.Logger   `mapstructure:"logger"`
 	Kafka    cfg.Kafka    `mapstructure:"kafka"`
-	Worker   struct {
-		BatchSize      int           `mapstructure:"batch_size"`
-		PollInterval   time.Duration `mapstructure:"poll_interval"`
-		ProduceTimeout time.Duration `mapstructure:"produce_timeout"`
-		MaxRetries     int           `mapstructure:"max_retries"`
-		BackoffBaseMS  int           `mapstructure:"backoff_base_ms"`
-	} `mapstructure:"worker"`
+	Worker   Worker       `mapstructure:"worker"`
+	Workers  []Worker     `mapstructure:"workers"`
 }
 
-func (o *OutboxerConfig) Validate() error {
-	if o.AppName == "" {
+type Worker struct {
+	OutboxTable    string        `mapstructure:"outbox_table"`
+	BatchSize      int           `mapstructure:"batch_size"`
+	PollInterval   time.Duration `mapstructure:"poll_interval"`
+	ProduceTimeout time.Duration `mapstructure:"produce_timeout"`
+	MaxRetries     int           `mapstructure:"max_retries"`
+	BackoffBaseMS  int           `mapstructure:"backoff_base_ms"`
+}
+
+func (c *Outboxer) Validate() error {
+	if c.AppName == "" {
 		return errors.New("app_name is required")
 	}
-	if err := o.Postgres.Validate(); err != nil {
+	if err := c.Postgres.Validate(); err != nil {
 		return fmt.Errorf("postgres: %w", err)
+	}
+	if len(c.Workers) == 0 && c.Worker.OutboxTable == "" {
+		return errors.New("either workers[] or worker must be provided")
 	}
 	return nil
 }
 
-func Load() (*OutboxerConfig, error) {
-	v := viper.New()
-	v.SetConfigType("yaml")
-	v.SetEnvPrefix("ORDERS")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	v.SetConfigFile("./services/outboxer/config/defaults.yaml")
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read defaults.yaml: %w", err)
+func (c *Outboxer) AllWorkers() []Worker {
+	if len(c.Workers) > 0 {
+		return c.Workers
 	}
-
-	ov := viper.New()
-	ov.SetConfigType("yaml")
-	ov.AddConfigPath("./")
-	ov.AddConfigPath("./configs")
-	ov.AddConfigPath("/etc/goshop")
-	for _, name := range []string{"orders", "config"} {
-		ov.SetConfigName(name)
-		if err := ov.ReadInConfig(); err == nil {
-			if err := v.MergeConfigMap(ov.AllSettings()); err != nil {
-				return nil, fmt.Errorf("merge %s.yaml: %w", name, err)
-			}
-			break
-		}
+	if c.Worker.OutboxTable != "" {
+		return []Worker{c.Worker}
 	}
-
-	var c OutboxerConfig
-	if err := v.Unmarshal(&c); err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
-	}
-	if len(c.Kafka.Brokers) == 0 {
-		return nil, errors.New("kafka.brokers is required")
-	}
-	if err := c.Postgres.Validate(); err != nil {
-		return nil, fmt.Errorf("postgres: %w", err)
-	}
-	c.Logger.AppName = c.AppName
-	return &c, nil
+	return nil
 }
 
-func NewConfig() *OutboxerConfig {
-	c, err := Load()
-	if err != nil {
-		panic(err)
-	}
+// New — грузим конфиг по схеме: файлы -> ENV (с префиксом OUTBOXER_)
+func New() *Outboxer {
+	c := cfg.MustLoad[Outboxer](cfg.Options{
+		Paths:         []string{"./services/outboxer/config", "./configs", "/etc/goshop"},
+		Names:         []string{"defaults", "outboxer", "config"},
+		Type:          "yaml",
+		EnvPrefix:     "OUTBOXER",
+		OptionalFiles: true, // false - требовать хотя бы один файл
+	})
+	c.Logger.AppName = c.AppName
 	return c
 }

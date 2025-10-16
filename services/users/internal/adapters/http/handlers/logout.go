@@ -6,6 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"log/slog"
+
+	"goshop/pkg/httpx"
 )
 
 type logoutReq struct {
@@ -15,6 +17,8 @@ type logoutReq struct {
 func (h *UsersHandlers) Logout(c *gin.Context) {
 	noCache(c)
 
+	l := ReqLog(c, h.log)
+
 	var in logoutReq
 	if err := c.ShouldBindJSON(&in); err != nil || in.RefreshToken == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -23,7 +27,7 @@ func (h *UsersHandlers) Logout(c *gin.Context) {
 
 	claims, err := h.jwtm.ParseAndVerify(in.RefreshToken)
 	if err != nil || claims == nil || claims.ID == "" {
-		h.log.Warn("logout: invalid refresh", slog.Any("err", err))
+		l.Warn("logout: invalid refresh", slog.Any("err", err))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return
 	}
@@ -35,7 +39,7 @@ func (h *UsersHandlers) Logout(c *gin.Context) {
 	}
 
 	if err := h.sessions.RevokeSession(c.Request.Context(), sessID); err != nil {
-		h.log.Error("logout: revoke session failed", slog.Any("err", err))
+		l.Error("logout: revoke session failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -46,7 +50,9 @@ func (h *UsersHandlers) Logout(c *gin.Context) {
 func (h *UsersHandlers) LogoutAll(c *gin.Context) {
 	noCache(c)
 
-	claims, ok := GetClaims(c)
+	l := ReqLog(c, h.log)
+
+	claims, ok := httpx.GetJWTClaims(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -60,7 +66,7 @@ func (h *UsersHandlers) LogoutAll(c *gin.Context) {
 
 	n, err := h.sessions.RevokeAll(c.Request.Context(), userID)
 	if err != nil {
-		h.log.Error("logout_all: revoke all failed", slog.Any("err", err))
+		l.Error("logout_all: revoke all failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}

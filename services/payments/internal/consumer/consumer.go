@@ -71,24 +71,27 @@ func (r *Runner) Run(ctx context.Context) error {
 		for !iter.Done() {
 			rec := iter.Next()
 
-			inserted, err := r.insertInbox(ctx, rec)
+			inboxID, inserted, err := r.insertInbox(ctx, rec)
 			if err != nil {
-				r.log.Error("inbox insert failed", "topic", rec.Topic, "partition", rec.Partition, "offset", rec.Offset, "err", err)
+				r.log.Error("inbox insert failed",
+					"topic", rec.Topic,
+					"partition", rec.Partition,
+					"offset", rec.Offset,
+					"err", err,
+				)
 				continue
 			}
 			if !inserted {
-				// уже видели этот offset — пропускаем обработку бизнес-логики
 				continue
 			}
 
-			// здесь запись в inbox прошла впервые
 			r.log.Info("inbox ok",
+				"id", inboxID,
 				"topic", rec.Topic,
 				"partition", rec.Partition,
 				"offset", rec.Offset,
 			)
 
-			// NEW: вызываем процессор бизнес-логики
 			if r.proc != nil {
 				if err := r.proc.ProcessRecord(ctx, rec); err != nil {
 					r.log.Error("processor error",
@@ -97,26 +100,39 @@ func (r *Runner) Run(ctx context.Context) error {
 						"offset", rec.Offset,
 						"err", err,
 					)
-					// решение простоты: не падаем, едем дальше
+					continue
 				}
+			}
+
+			if err := r.markProcessed(ctx, inboxID); err != nil {
+				r.log.Warn("inbox markProcessed failed", "id", inboxID, "err", err)
 			}
 		}
 	}
 }
 
-func (r *Runner) insertInbox(ctx context.Context, rec *kgo.Record) (bool, error) {
+func (r *Runner) insertInbox(ctx context.Context, rec *kgo.Record) (int64, bool, error) {
 	if rec == nil {
-		return false, errors.New("nil record")
+		return 0, false, errors.New("nil record")
 	}
-	tag, err := r.db.Exec(ctx, `
-		INSERT INTO inbox (topic, partition, "offset", key, payload)
+	var id int64
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO payments_inbox (topic, partition, "offset", key, payload)
 		VALUES ($1, $2, $3, $4, $5::jsonb)
-		ON CONFLICT (topic, partition, "offset") DO NOTHING;
-	`,
-		rec.Topic, rec.Partition, rec.Offset, rec.Key, rec.Value,
-	)
+		ON CONFLICT (topic, partition, "offset") DO NOTHING
+		RETURNING id;
+	`, rec.Topic, rec.Partition, rec.Offset, rec.Key, rec.Value).Scan(&id)
+
 	if err != nil {
-		return false, fmt.Errorf("exec insert inbox: %w", err)
+		if err.Error() == "no rows in result set" {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("insert payments_inbox: %w", err)
 	}
-	return tag.RowsAffected() == 1, nil
+	return id, true, nil
+}
+
+func (r *Runner) markProcessed(ctx context.Context, id int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE payments_inbox SET processed_at = now() WHERE id = $1 AND processed_at IS NULL;`, id)
+	return err
 }

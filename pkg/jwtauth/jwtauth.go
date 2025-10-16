@@ -2,24 +2,28 @@ package jwtauth
 
 import (
 	"errors"
-	"github.com/google/uuid"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type Config struct {
-	Secret     string
-	Issuer     string
-	AccessTTL  time.Duration
-	RefreshTTL time.Duration
+	Secret          string
+	Issuer          string
+	AccessTTL       time.Duration
+	RefreshTTL      time.Duration
+	AccessAudience  string // опционально: aud для access-токена (например, "orders")
+	RefreshAudience string // опционально: aud для refresh-токена (например, "refresh")
 }
 
 type Manager struct {
-	secret     []byte
-	issuer     string
-	accessTTL  time.Duration
-	refreshTTL time.Duration
+	secret          []byte
+	issuer          string
+	accessTTL       time.Duration
+	refreshTTL      time.Duration
+	accessAudience  string
+	refreshAudience string
 }
 
 type Claims struct {
@@ -30,10 +34,12 @@ type Claims struct {
 
 func New(cfg Config) *Manager {
 	return &Manager{
-		secret:     []byte(cfg.Secret),
-		issuer:     cfg.Issuer,
-		accessTTL:  cfg.AccessTTL,
-		refreshTTL: cfg.RefreshTTL,
+		secret:          []byte(cfg.Secret),
+		issuer:          cfg.Issuer,
+		accessTTL:       cfg.AccessTTL,
+		refreshTTL:      cfg.RefreshTTL,
+		accessAudience:  cfg.AccessAudience,
+		refreshAudience: cfg.RefreshAudience,
 	}
 }
 
@@ -61,33 +67,41 @@ func (m *Manager) GeneratePairWithJTI(userID, email string, refreshJTI uuid.UUID
 
 func (m *Manager) generateAccess(userID, email string) (string, error) {
 	now := time.Now().UTC()
+	rc := jwt.RegisteredClaims{
+		Issuer:    m.issuer,
+		Subject:   userID,
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTTL)),
+	}
+	if m.accessAudience != "" {
+		rc.Audience = jwt.ClaimStrings{m.accessAudience}
+	}
 	ac := &Claims{
-		UserID: userID,
-		Email:  email,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    m.issuer,
-			Subject:   userID,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTTL)),
-		},
+		UserID:           userID,
+		Email:            email,
+		RegisteredClaims: rc,
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, ac).SignedString(m.secret)
 }
 
 func (m *Manager) generateRefreshWithJTI(userID, email string, jti uuid.UUID) (string, error) {
 	now := time.Now().UTC()
-	rc := &Claims{
-		UserID: userID,
-		Email:  email,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    m.issuer,
-			Subject:   userID,
-			ID:        jti.String(),
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTTL)),
-		},
+	rc := jwt.RegisteredClaims{
+		Issuer:    m.issuer,
+		Subject:   userID,
+		ID:        jti.String(),
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTTL)),
 	}
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, rc).SignedString(m.secret)
+	if m.refreshAudience != "" {
+		rc.Audience = jwt.ClaimStrings{m.refreshAudience}
+	}
+	cl := &Claims{
+		UserID:           userID,
+		Email:            email,
+		RegisteredClaims: rc,
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, cl).SignedString(m.secret)
 }
 
 func (m *Manager) ParseAndVerify(tokenStr string) (*Claims, error) {

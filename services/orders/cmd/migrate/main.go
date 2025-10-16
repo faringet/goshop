@@ -27,7 +27,7 @@ func main() {
 	cmd := flag.Arg(0)
 	args := flag.Args()[1:]
 
-	cfg := config.NewConfig()
+	cfg := config.New()
 
 	dsn := cfg.Postgres.DSN()
 	db, err := sql.Open("pgx", dsn)

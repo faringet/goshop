@@ -52,6 +52,13 @@ type loginResp struct {
 func (h *UsersHandlers) Register(c *gin.Context) {
 	noCache(c)
 
+	l := h.log
+	if rl, ok := c.Get("req_logger"); ok {
+		if reqLog, ok := rl.(*slog.Logger); ok && reqLog != nil {
+			l = reqLog
+		}
+	}
+
 	var in registerReq
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -75,7 +82,7 @@ func (h *UsersHandlers) Register(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "email already taken"})
 			return
 		default:
-			h.log.Error("users.register failed", slog.Any("err", err))
+			l.Error("users.register failed", slog.Any("err", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -90,6 +97,8 @@ func (h *UsersHandlers) Register(c *gin.Context) {
 
 func (h *UsersHandlers) Login(c *gin.Context) {
 	noCache(c)
+
+	l := ReqLog(c, h.log)
 
 	var in loginReq
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -107,10 +116,9 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 		return
 	}
 
-	//Генерим пару токенов + JTI refresh
 	access, refresh, jti, err := h.jwtm.GeneratePair(u.ID.String(), u.Email)
 	if err != nil {
-		h.log.Error("jwt.GeneratePair failed", slog.Any("err", err))
+		l.Error("jwt.GeneratePair failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -118,13 +126,12 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 	//Достаём exp из только что выпущенного refresh
 	claims, err := h.jwtm.ParseAndVerify(refresh)
 	if err != nil || claims.ExpiresAt == nil {
-		h.log.Error("jwt.ParseAndVerify(refresh) failed", slog.Any("err", err))
+		l.Error("jwt.ParseAndVerify(refresh) failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 	expiresAt := claims.ExpiresAt.Time
 
-	//Сохраняем сессию в PG (храним ток хеш refresh)
 	hash := sha256.Sum256([]byte(refresh))
 	ua := c.Request.UserAgent()
 	ip := net.ParseIP(c.ClientIP())
@@ -138,7 +145,7 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 		ua,
 		ip,
 	); err != nil {
-		h.log.Error("sessions.CreateSession failed", slog.Any("err", err))
+		l.Error("sessions.CreateSession failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
