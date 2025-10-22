@@ -12,6 +12,7 @@ import (
 	"goshop/services/orders/internal/adapters/http"
 	"goshop/services/orders/internal/adapters/repo/orderpg"
 	"goshop/services/orders/internal/consumer"
+	grpcsvr "goshop/services/orders/internal/grpc"
 	"net/http"
 	"os"
 	"os/signal"
@@ -99,6 +100,18 @@ func main() {
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("http: listen failed", "err", err)
+			stop()
+		}
+	}()
+
+	ordersGRPC := grpcsvr.Options{
+		Addr:   cfg.GRPC.Addr,
+		Logger: log,
+		Repo:   repo,
+	}
+	go func() {
+		if err := grpcsvr.Start(ctx, ordersGRPC); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("orders-grpc: stopped with error", "err", err)
 			stop()
 		}
 	}()
