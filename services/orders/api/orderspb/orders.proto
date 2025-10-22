@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package orders.v1;
+option go_package = "./services/orders/api/orderspb;orderspb";
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_NEW         = 1;
+  ORDER_STATUS_PAID        = 2;
+  ORDER_STATUS_CANCELLED   = 3;
+}
+
+
+message CreateOrderRequest {
+  string user_id      = 1;
+  int64  amount_cents = 2;
+  string currency     = 3;
+}
+
+message CreateOrderResponse {
+  string      order_id     = 1;
+  OrderStatus status       = 2;
+  string      currency     = 3;
+  double      total_amount = 4;
+  string      created_at   = 5;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+message GetOrderResponse {
+  string      order_id     = 1;
+  string      user_id      = 2;
+  OrderStatus status       = 3;
+  string      currency     = 4;
+  double      total_amount = 5;
+  string      created_at   = 6;
+  string      updated_at   = 7;
+}
+
+service Orders {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+}

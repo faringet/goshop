@@ -16,6 +16,9 @@ type Orders struct {
 	Kafka    cfg.Kafka    `mapstructure:"kafka"`
 	Consumer Consumer     `mapstructure:"consumer"`
 	JWT      cfg.JWT      `mapstructure:"jwt"`
+	GRPC     struct {
+		Addr string `mapstructure:"addr"`
+	} `mapstructure:"grpc"`
 }
 
 type Consumer struct {
