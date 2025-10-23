@@ -188,6 +188,41 @@ func (s *CheckoutService) CreateOrder(ctx context.Context, in *checkoutpb.Create
 	return resp, nil
 }
 
+func (s *CheckoutService) GetOrderStatus(ctx context.Context, in *checkoutpb.GetOrderStatusRequest) (*checkoutpb.GetOrderStatusResponse, error) {
+	if in == nil || in.OrderId == "" {
+		return nil, status.Error(codes.InvalidArgument, "order_id is required")
+	}
+
+	key := "order:" + in.OrderId + ":status"
+
+	v, err := s.rdb.Get(ctx, key).Result()
+	if err == redis.Nil {
+		// в кэше нет — возвращаем UNKNOWN (UNSPECIFIED)
+		return &checkoutpb.GetOrderStatusResponse{
+			Status: checkoutpb.OrderStatus_ORDER_STATUS_UNSPECIFIED,
+		}, nil
+	}
+	if err != nil {
+		// на ошибке Redis не падаем, но корректно репортим
+		s.log.Warn("redis get failed", "key", key, "err", err)
+		return nil, status.Error(codes.Unavailable, "status cache unavailable")
+	}
+
+	var st checkoutpb.OrderStatus
+	switch v {
+	case "new":
+		st = checkoutpb.OrderStatus_ORDER_STATUS_NEW
+	case "paid":
+		st = checkoutpb.OrderStatus_ORDER_STATUS_PAID
+	case "cancelled", "canceled":
+		st = checkoutpb.OrderStatus_ORDER_STATUS_CANCELLED
+	default:
+		st = checkoutpb.OrderStatus_ORDER_STATUS_UNSPECIFIED
+	}
+
+	return &checkoutpb.GetOrderStatusResponse{Status: st}, nil
+}
+
 // --- helpers ---
 
 func payloadHash(userID string, amountCents int64, currency string) string {

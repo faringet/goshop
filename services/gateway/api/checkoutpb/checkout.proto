@@ -39,8 +39,17 @@ message GetOrderResponse {
   string updated_at = 7;
 }
 
+message GetOrderStatusRequest {
+  string order_id = 1; // UUID
+}
+
+message GetOrderStatusResponse {
+  OrderStatus status = 1;  // UNKNOWN если ключа нет в кэше
+}
+
 service Checkout {
   rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
   rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
 }
 

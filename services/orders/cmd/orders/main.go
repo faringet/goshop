@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/redis/go-redis/v9"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"goshop/pkg/httpx"
 	"goshop/pkg/jwtauth"
@@ -76,8 +77,19 @@ func main() {
 	}
 	defer kc.Close()
 
+	// Redis
+	rds := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	defer rds.Close()
+	if err := rds.Ping(ctx).Err(); err != nil {
+		log.Error("redis: connect failed", "addr", cfg.Redis.Addr, "err", err)
+		return
+	}
 	// Процессор: применяем payment.confirmed/failed → orders.status
-	proc := consumer.NewProcessor(log, pool)
+	proc := consumer.NewProcessor(log, pool, rds, cfg.Redis.TTLStatus)
 
 	// Раннер консюмера
 	rcfg := consumer.Config{
