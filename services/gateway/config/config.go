@@ -20,6 +20,15 @@ type Gateway struct {
 		Addr    string        `mapstructure:"addr"`
 		Timeout time.Duration `mapstructure:"timeout"`
 	} `mapstructure:"orders_grpc"`
+
+	Redis struct {
+		Addr         string        `mapstructure:"addr"`
+		Password     string        `mapstructure:"password"`
+		DB           int           `mapstructure:"db"`
+		DialTimeout  time.Duration `mapstructure:"dial_timeout"`
+		ReadTimeout  time.Duration `mapstructure:"read_timeout"`
+		WriteTimeout time.Duration `mapstructure:"write_timeout"`
+	} `mapstructure:"redis"`
 }
 
 func (g *Gateway) Validate() error {
@@ -31,6 +40,9 @@ func (g *Gateway) Validate() error {
 	}
 	if g.OrdersGRPC.Addr == "" {
 		return errors.New("orders_grpc.addr is required")
+	}
+	if g.Redis.Addr == "" {
+		return errors.New("redis.addr is required")
 	}
 	return nil
 }

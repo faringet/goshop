@@ -14,6 +14,7 @@ type Orders struct {
 	Postgres cfg.Postgres `mapstructure:"postgres"`
 	Logger   cfg.Logger   `mapstructure:"logger"`
 	Kafka    cfg.Kafka    `mapstructure:"kafka"`
+	Redis    Redis        `mapstructure:"redis"`
 	Consumer Consumer     `mapstructure:"consumer"`
 	JWT      cfg.JWT      `mapstructure:"jwt"`
 	GRPC     struct {
@@ -28,6 +29,13 @@ type Consumer struct {
 	RebalanceTimeout time.Duration `mapstructure:"rebalance_timeout"`
 }
 
+type Redis struct {
+	Addr      string        `mapstructure:"addr"`
+	Password  string        `mapstructure:"password"`
+	DB        int           `mapstructure:"db"`
+	TTLStatus time.Duration `mapstructure:"ttl_status"`
+}
+
 func (o *Orders) Validate() error {
 	if o.AppName == "" {
 		return errors.New("app_name is required")
@@ -37,6 +45,12 @@ func (o *Orders) Validate() error {
 	}
 	if o.JWT.Secret == "" {
 		return errors.New("jwt.secret is required (for token verification)")
+	}
+	if o.Redis.Addr == "" {
+		o.Redis.Addr = "localhost:6379"
+	}
+	if o.Redis.TTLStatus <= 0 {
+		o.Redis.TTLStatus = 24 * time.Hour
 	}
 	return nil
 }

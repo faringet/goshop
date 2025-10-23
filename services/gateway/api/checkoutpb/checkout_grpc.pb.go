@@ -19,18 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Checkout_CreateOrder_FullMethodName = "/checkout.v1.Checkout/CreateOrder"
-	Checkout_GetOrder_FullMethodName    = "/checkout.v1.Checkout/GetOrder"
+	Checkout_CreateOrder_FullMethodName    = "/checkout.v1.Checkout/CreateOrder"
+	Checkout_GetOrder_FullMethodName       = "/checkout.v1.Checkout/GetOrder"
+	Checkout_GetOrderStatus_FullMethodName = "/checkout.v1.Checkout/GetOrderStatus"
 )
 
 // CheckoutClient is the client API for Checkout service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// gRPC-сервис Gateway
 type CheckoutClient interface {
 	CreateOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
 	GetOrder(ctx context.Context, in *GetOrderRequest, opts ...grpc.CallOption) (*GetOrderResponse, error)
+	GetOrderStatus(ctx context.Context, in *GetOrderStatusRequest, opts ...grpc.CallOption) (*GetOrderStatusResponse, error)
 }
 
 type checkoutClient struct {
@@ -61,14 +61,23 @@ func (c *checkoutClient) GetOrder(ctx context.Context, in *GetOrderRequest, opts
 	return out, nil
 }
 
+func (c *checkoutClient) GetOrderStatus(ctx context.Context, in *GetOrderStatusRequest, opts ...grpc.CallOption) (*GetOrderStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOrderStatusResponse)
+	err := c.cc.Invoke(ctx, Checkout_GetOrderStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CheckoutServer is the server API for Checkout service.
 // All implementations must embed UnimplementedCheckoutServer
 // for forward compatibility.
-//
-// gRPC-сервис Gateway
 type CheckoutServer interface {
 	CreateOrder(context.Context, *CreateOrderRequest) (*CreateOrderResponse, error)
 	GetOrder(context.Context, *GetOrderRequest) (*GetOrderResponse, error)
+	GetOrderStatus(context.Context, *GetOrderStatusRequest) (*GetOrderStatusResponse, error)
 	mustEmbedUnimplementedCheckoutServer()
 }
 
@@ -84,6 +93,9 @@ func (UnimplementedCheckoutServer) CreateOrder(context.Context, *CreateOrderRequ
 }
 func (UnimplementedCheckoutServer) GetOrder(context.Context, *GetOrderRequest) (*GetOrderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOrder not implemented")
+}
+func (UnimplementedCheckoutServer) GetOrderStatus(context.Context, *GetOrderStatusRequest) (*GetOrderStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOrderStatus not implemented")
 }
 func (UnimplementedCheckoutServer) mustEmbedUnimplementedCheckoutServer() {}
 func (UnimplementedCheckoutServer) testEmbeddedByValue()                  {}
@@ -142,6 +154,24 @@ func _Checkout_GetOrder_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Checkout_GetOrderStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOrderStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CheckoutServer).GetOrderStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Checkout_GetOrderStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CheckoutServer).GetOrderStatus(ctx, req.(*GetOrderStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Checkout_ServiceDesc is the grpc.ServiceDesc for Checkout service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -156,6 +186,10 @@ var Checkout_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOrder",
 			Handler:    _Checkout_GetOrder_Handler,
+		},
+		{
+			MethodName: "GetOrderStatus",
+			Handler:    _Checkout_GetOrderStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

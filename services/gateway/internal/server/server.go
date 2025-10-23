@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/redis/go-redis/v9"
 	"log/slog"
 	"net"
 	"time"
@@ -24,6 +25,7 @@ type Options struct {
 	OrdersTimeout  time.Duration
 	Logger         *slog.Logger
 	EnableReflect  bool
+	Redis          *redis.Client
 }
 
 func Start(ctx context.Context, opt Options) error {
@@ -57,6 +59,7 @@ func Start(ctx context.Context, opt Options) error {
 		OrdersTO:    opt.OrdersTimeout,
 		Logger:      opt.Logger,
 		DefaultCurr: "RUB",
+		Redis:       opt.Redis,
 	})
 	if err != nil {
 		opt.Logger.Error("gateway: init checkout service failed", "err", err)
