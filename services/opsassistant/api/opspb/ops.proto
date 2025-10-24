@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package ops.v1;
+
+option go_package = "./services/opsassistant/api/opspb;opspb";
+
+message ExplainOrderRequest {
+  string order_id = 1;   // UUID
+  string question = 2;   // опциональный отвит типа: "почему отменился?"
+}
+
+message ExplainOrderResponse {
+  string answer = 1;     // развернутый ответ LLM
+  string timeline = 2;   // человекочитаемый таймлайн (markdown/JSON)
+}
+
+message GetTimelineRequest { string order_id = 1; }
+message GetTimelineResponse { string timeline = 1; }
+
+service OpsAssistant {
+  rpc ExplainOrder(ExplainOrderRequest) returns (ExplainOrderResponse);
+  rpc GetTimeline(GetTimelineRequest) returns (GetTimelineResponse);
+}
