@@ -14,7 +14,7 @@ func (h *UsersHandlers) Me(c *gin.Context) {
 
 	claims, ok := httpx.GetJWTClaims(c)
 	if !ok {
-		l.Warn("me: no jwt claims in context")
+		l.Warn("users.me: missing jwt claims")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
