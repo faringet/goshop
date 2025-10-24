@@ -12,7 +12,6 @@ import (
 
 	"goshop/services/users/internal/adapters/http/handlers"
 	"goshop/services/users/internal/adapters/repo/sessionpg"
-	"goshop/services/users/internal/adapters/repo/userpg"
 	"goshop/services/users/internal/app"
 )
 
@@ -37,7 +36,9 @@ func NewModule(log *slog.Logger, db *pgxpool.Pool, svc *app.Service, jwtm *jwtau
 func (m *Module) Name() string { return "users.http" }
 
 func (m *Module) Mount(r *gin.Engine) error {
-	// health
+	m.log.Info("http: mounting module", slog.String("module", m.Name()))
+
+	// Health endpoints
 	hh := handlers.NewHealthHandlers(m.log, m.db)
 	r.GET("/live", hh.Live)
 	r.GET("/ready", hh.Ready)
@@ -46,7 +47,7 @@ func (m *Module) Mount(r *gin.Engine) error {
 	v1.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
 	v1.GET("/db/ping", hh.DBPing)
 
-	// users
+	// Users endpoints
 	uh := handlers.NewUsersHandlers(m.log, m.svc, m.jwtm, m.srepo)
 
 	u := v1.Group("/users")
@@ -57,15 +58,18 @@ func (m *Module) Mount(r *gin.Engine) error {
 		u.POST("/refresh", uh.Refresh)
 		u.POST("/logout", uh.Logout) // по refresh token, без auth
 
-		// protected (требует Access JWT): используем общий middleware httpx.AuthJWT
+		// protected (Access JWT)
 		auth := u.Group("")
-		auth.Use(httpx.AuthJWT(m.log, m.jwtm))
+		auth.Use(httpx.AuthJWT(m.log, m.jwtm)) // единый мидлвар аутентификации JWT
 		auth.GET("/me", uh.Me)
 		auth.POST("/logout_all", uh.LogoutAll)
 	}
 
+	m.log.Info("http: routes registered",
+		slog.String("module", m.Name()),
+		slog.String("base", "/v1"),
+		slog.String("group", "/v1/users"),
+	)
+
 	return nil
 }
-
-// опционально, чтобы компоновщик импорт подтянул пакет
-var _ = userpg.NewRepo

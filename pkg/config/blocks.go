@@ -123,7 +123,7 @@ type JWT struct {
 type Logger struct {
 	Level   string `mapstructure:"level"`
 	JSON    bool   `mapstructure:"json"`
-	AppName string `mapstructure:"-"`
+	AppName string `mapstructure:"app_name"`
 }
 
 type Telemetry struct {
