@@ -1,7 +1,6 @@
 package httpadp
 
 import (
-	"goshop/pkg/jwtauth"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +8,8 @@ import (
 	"log/slog"
 
 	"goshop/pkg/httpx"
+	"goshop/pkg/jwtauth"
+
 	"goshop/services/orders/internal/adapters/http/handlers"
 	"goshop/services/orders/internal/adapters/repo/orderpg"
 )
@@ -32,7 +33,9 @@ func NewModule(log *slog.Logger, db *pgxpool.Pool, repo *orderpg.Repository, jwt
 func (m *Module) Name() string { return "orders.http" }
 
 func (m *Module) Mount(r *gin.Engine) error {
-	// health
+	m.log.Info("http: mounting module", slog.String("module", m.Name()))
+
+	// Health
 	hh := handlers.NewHealthHandlers(m.log, m.db)
 	r.GET("/live", hh.Live)
 	r.GET("/ready", hh.Ready)
@@ -41,16 +44,19 @@ func (m *Module) Mount(r *gin.Engine) error {
 	v1.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
 	v1.GET("/db/ping", hh.DBPing)
 
-	// orders
+	// Orders
 	oh := handlers.NewOrdersHandlers(m.log, m.repo)
 
+	// Secured (Access JWT с aud="api")
 	secured := v1.Group("")
 	secured.Use(httpx.AuthJWTExpectAudience(m.log, m.jwtm, "api"))
 	secured.POST("/orders", oh.Create)
 
-	return nil
-}
+	m.log.Info("http: routes registered",
+		slog.String("module", m.Name()),
+		slog.String("base", "/v1"),
+		slog.String("group", "/v1/orders"),
+	)
 
-func AsOption(m *Module) httpx.Option {
-	return func(r *gin.Engine) { _ = m.Mount(r) }
+	return nil
 }

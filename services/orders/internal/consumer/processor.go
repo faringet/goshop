@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/redis/go-redis/v9"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -48,7 +48,12 @@ func (p *Processor) ProcessRecord(ctx context.Context, rec *kgo.Record) error {
 	case "payment.confirmed", "payment.failed":
 		var ev paymentEvent
 		if err := json.Unmarshal(rec.Value, &ev); err != nil {
-			p.log.Warn("orders: bad payment event payload", "err", err)
+			p.log.Warn("orders.processor: bad payment event payload",
+				slog.String("topic", rec.Topic),
+				slog.Int64("partition", int64(rec.Partition)),
+				slog.Int64("offset", rec.Offset),
+				slog.Any("err", err),
+			)
 			return nil
 		}
 		return p.applyPayment(ctx, ev)
@@ -80,22 +85,30 @@ func (p *Processor) applyPayment(ctx context.Context, ev paymentEvent) error {
 	}
 
 	if tag.RowsAffected() > 0 {
-		// Статус реально изменился — кешируем именно новое значение
 		p.setStatusCache(ctx, ev.OrderID.String(), want)
-		p.log.Info("orders: status updated", "order_id", ev.OrderID, "to", want)
+		p.log.Info("orders.processor: status updated",
+			slog.String("order_id", ev.OrderID.String()),
+			slog.String("to", want),
+			slog.String("event", ev.Event),
+		)
 		return nil
 	}
 
-	// Ничего не поменялось. Выясним текущий фактический статус и закешируем его.
 	var cur string
 	if err := p.db.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, ev.OrderID).Scan(&cur); err != nil {
-		// Не удалось прочитать — логируем и выходим без кэша (не критично).
-		p.log.Warn("orders: could not read current status after noop update", "order_id", ev.OrderID, "err", err)
+		p.log.Warn("orders.processor: read current status after noop failed",
+			slog.String("order_id", ev.OrderID.String()),
+			slog.Any("err", err),
+		)
 		return nil
 	}
 
 	p.setStatusCache(ctx, ev.OrderID.String(), cur)
-	p.log.Info("orders: payment event applied (noop)", "order_id", ev.OrderID, "kept", cur)
+	p.log.Info("orders.processor: payment applied (noop)",
+		slog.String("order_id", ev.OrderID.String()),
+		slog.String("kept", cur),
+		slog.String("event", ev.Event),
+	)
 	return nil
 }
 
@@ -105,8 +118,16 @@ func (p *Processor) setStatusCache(ctx context.Context, orderID, status string) 
 	}
 	key := "order:" + orderID + ":status"
 	if err := p.rds.Set(ctx, key, status, p.ttl).Err(); err != nil {
-		p.log.Warn("redis set status failed", "key", key, "status", status, "err", err)
+		p.log.Warn("orders.processor.redis: set status failed",
+			slog.String("key", key),
+			slog.String("status", status),
+			slog.Any("err", err),
+		)
 		return
 	}
-	p.log.Debug("status cached", "key", key, "status", status, "ttl", p.ttl)
+	p.log.Debug("orders.processor: status cached",
+		slog.String("key", key),
+		slog.String("status", status),
+		slog.Int64("ttl_ms", p.ttl.Milliseconds()),
+	)
 }

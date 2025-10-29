@@ -14,12 +14,10 @@ type Orders struct {
 	Postgres cfg.Postgres `mapstructure:"postgres"`
 	Logger   cfg.Logger   `mapstructure:"logger"`
 	Kafka    cfg.Kafka    `mapstructure:"kafka"`
+	JWT      cfg.JWT      `mapstructure:"jwt"`
 	Redis    Redis        `mapstructure:"redis"`
 	Consumer Consumer     `mapstructure:"consumer"`
-	JWT      cfg.JWT      `mapstructure:"jwt"`
-	GRPC     struct {
-		Addr string `mapstructure:"addr"`
-	} `mapstructure:"grpc"`
+	GRPC     GRPC         `mapstructure:"grpc"`
 }
 
 type Consumer struct {
@@ -34,6 +32,10 @@ type Redis struct {
 	Password  string        `mapstructure:"password"`
 	DB        int           `mapstructure:"db"`
 	TTLStatus time.Duration `mapstructure:"ttl_status"`
+}
+
+type GRPC struct {
+	Addr string `mapstructure:"addr"`
 }
 
 func (o *Orders) Validate() error {

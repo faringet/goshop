@@ -46,19 +46,21 @@ func (h *OrdersHandlers) Create(c *gin.Context) {
 
 	l := reqLog(c, h.log)
 
+	// auth
 	claims, ok := httpx.GetJWTClaims(c)
 	if !ok || claims.UserID == "" {
-		l.Warn("create: no jwt claims in context")
+		l.Warn("orders.create: missing jwt claims")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 	userUUID, err := uuid.Parse(claims.UserID)
 	if err != nil {
-		l.Warn("create: invalid uid in jwt", "uid", claims.UserID)
+		l.Warn("orders.create: invalid user_id in jwt")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
+	// input
 	var in createOrderReq
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
@@ -73,6 +75,7 @@ func (h *OrdersHandlers) Create(c *gin.Context) {
 		cur = "RUB"
 	}
 
+	// create order (with outbox)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 	defer cancel()
 
@@ -87,7 +90,7 @@ func (h *OrdersHandlers) Create(c *gin.Context) {
 		},
 	})
 	if err != nil {
-		l.Error("orders.create failed", slog.Any("err", err))
+		l.Error("orders.create: repo.Create failed", slog.Any("err", err))
 		var se *json.SyntaxError
 		if errors.As(err, &se) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bad payload"})
@@ -97,6 +100,7 @@ func (h *OrdersHandlers) Create(c *gin.Context) {
 		return
 	}
 
+	// response
 	c.Header("Content-Type", "application/json")
 	c.Header("Cache-Control", "no-store")
 	c.Header("Location", fmt.Sprintf("/v1/orders/%s", ord.ID.String()))
@@ -112,6 +116,7 @@ func (h *OrdersHandlers) Create(c *gin.Context) {
 	})
 }
 
+// local helpers
 func noCache(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 }
