@@ -6,16 +6,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/redis/go-redis/v9"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/encoding/protojson"
 	"strings"
 	"time"
 
 	"log/slog"
 
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"goshop/services/gateway/api/checkoutpb"
 	"goshop/services/orders/api/orderspb"
@@ -78,7 +78,7 @@ func (s *CheckoutService) CreateOrder(ctx context.Context, in *checkoutpb.Create
 	if idemKeyStr == "" {
 		out, err := s.orders.CreateOrder(ctx, in.UserId, in.AmountCents, curr)
 		if err != nil {
-			s.log.Warn("orders.CreateOrder failed", "err", err)
+			s.log.Warn("gateway.checkout.orders: create failed", slog.Any("err", err))
 			return nil, status.Errorf(codes.FailedPrecondition, "orders create failed: %v", err)
 		}
 		return &checkoutpb.CreateOrderResponse{
@@ -111,7 +111,7 @@ func (s *CheckoutService) CreateOrder(ctx context.Context, in *checkoutpb.Create
 			if js := m["resp"]; js != "" {
 				var out checkoutpb.CreateOrderResponse
 				if err := protojson.Unmarshal([]byte(js), &out); err == nil {
-					s.log.Info("idem: replay", "key", idemKeyStr)
+					s.log.Info("gateway.checkout.idem: replay", slog.String("key", idemKeyStr))
 					return &out, nil
 				}
 			}
@@ -120,13 +120,13 @@ func (s *CheckoutService) CreateOrder(ctx context.Context, in *checkoutpb.Create
 			return nil, status.Error(codes.Aborted, "idempotent request is in progress, retry later")
 		}
 	} else if err != nil {
-		s.log.Warn("redis HGetAll failed", "key", idemKey, "err", err)
+		s.log.Warn("gateway.checkout.redis: hgetall failed", slog.String("key", idemKey), slog.Any("err", err))
 	}
 
 	// 4) пытаемся захватить лок (SETNX)
 	ok, err := s.rdb.SetNX(ctx, lockKey, "1", lockTTL).Result()
 	if err != nil {
-		s.log.Warn("redis SetNX lock failed", "key", lockKey, "err", err)
+		s.log.Warn("gateway.checkout.redis: setnx lock failed", slog.String("key", lockKey), slog.Any("err", err))
 		return nil, status.Error(codes.ResourceExhausted, "idempotency lock failed")
 	}
 	if !ok {
@@ -143,17 +143,16 @@ func (s *CheckoutService) CreateOrder(ctx context.Context, in *checkoutpb.Create
 		"payload_hash": ph,
 		"ts":           nowRFC3339,
 	}).Err(); err != nil {
-		s.log.Warn("redis HSet(in_progress) failed", "key", idemKey, "err", err)
+		s.log.Warn("gateway.checkout.redis: hset in_progress failed", slog.String("key", idemKey), slog.Any("err", err))
 	}
 	_ = s.rdb.Expire(ctx, idemKey, runTTL).Err()
 
-	s.log.Info("idem: commit", "key", idemKeyStr)
+	s.log.Info("gateway.checkout.idem: begin", slog.String("key", idemKeyStr))
 
 	// 6) основной вызов в orders
 	out, err := s.orders.CreateOrder(ctx, in.UserId, in.AmountCents, curr)
 	if err != nil {
-		s.log.Warn("orders.CreateOrder failed", "err", err)
-		// можно сохранить state=error с коротким TTL (опционально)
+		s.log.Warn("gateway.checkout.orders: create failed", slog.Any("err", err))
 		_ = s.rdb.HSet(ctx, idemKey, map[string]any{
 			"state":        "error",
 			"payload_hash": ph,
@@ -181,9 +180,10 @@ func (s *CheckoutService) CreateOrder(ctx context.Context, in *checkoutpb.Create
 		"code":         "OK",
 		"ts":           time.Now().UTC().Format(time.RFC3339),
 	}).Err(); err != nil {
-		s.log.Warn("redis HSet(done) failed", "key", idemKey, "err", err)
+		s.log.Warn("gateway.checkout.redis: hset done failed", slog.String("key", idemKey), slog.Any("err", err))
 	}
 	_ = s.rdb.Expire(ctx, idemKey, finalTTL).Err()
+	s.log.Info("gateway.checkout.idem: done", slog.String("key", idemKeyStr))
 
 	return resp, nil
 }
@@ -197,14 +197,12 @@ func (s *CheckoutService) GetOrderStatus(ctx context.Context, in *checkoutpb.Get
 
 	v, err := s.rdb.Get(ctx, key).Result()
 	if err == redis.Nil {
-		// в кэше нет — возвращаем UNKNOWN (UNSPECIFIED)
 		return &checkoutpb.GetOrderStatusResponse{
 			Status: checkoutpb.OrderStatus_ORDER_STATUS_UNSPECIFIED,
 		}, nil
 	}
 	if err != nil {
-		// на ошибке Redis не падаем, но корректно репортим
-		s.log.Warn("redis get failed", "key", key, "err", err)
+		s.log.Warn("gateway.checkout.redis: get failed", slog.String("key", key), slog.Any("err", err))
 		return nil, status.Error(codes.Unavailable, "status cache unavailable")
 	}
 

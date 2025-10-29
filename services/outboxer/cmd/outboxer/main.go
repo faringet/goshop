@@ -1,41 +1,64 @@
+// services/outboxer/cmd/outboxer/main.go
 package main
 
 import (
 	"context"
 	"errors"
-	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kgo"
-	"goshop/pkg/logger"
-	"goshop/pkg/postgres"
-	"goshop/services/outboxer/config"
-	"goshop/services/outboxer/internal/worker"
-	"os"
+	"fmt"
+	"log/slog"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kgo"
+
+	"goshop/pkg/logger"
+	"goshop/pkg/postgres"
+	"goshop/services/outboxer/config"
+	"goshop/services/outboxer/internal/worker"
 )
 
 func main() {
 	start := time.Now()
+
+	// OS signals
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Config
+	// Config + Logger
 	cfg := config.New()
+	log := logger.NewLogger(cfg.Logger)
+	slog.SetDefault(log)
 
-	// Logger
-	log := logger.NewPrettyLogger(cfg.Logger)
-	log.Info("boot: starting outboxer", "workers", len(cfg.AllWorkers()))
-
-	// Postgres
-	pool, err := postgres.NewPool(ctx, cfg.Postgres)
-	if err != nil {
-		log.Error("postgres: connect failed", "host", cfg.Postgres.Host, "port", cfg.Postgres.Port, "db", cfg.Postgres.DBName, "err", err)
+	if err := cfg.Validate(); err != nil {
+		log.Error("config: invalid", slog.Any("err", err))
 		return
 	}
+
+	log.Info("outboxer: starting",
+		slog.Int("workers", len(cfg.AllWorkers())),
+		slog.Int("kafka_brokers", len(cfg.Kafka.Brokers)),
+	)
+
+	// Postgres
+	pgStart := time.Now()
+	pool, err := postgres.NewPool(ctx, cfg.Postgres)
+	if err != nil {
+		log.Error("postgres: connect failed",
+			slog.String("host", cfg.Postgres.Host),
+			slog.Int("port", cfg.Postgres.Port),
+			slog.String("db", cfg.Postgres.DBName),
+			slog.Any("err", err),
+		)
+		return
+	}
+	log.Info("postgres: connected",
+		slog.String("dsn", fmt.Sprintf("%s@%s:%d/%s", cfg.Postgres.User, cfg.Postgres.Host, cfg.Postgres.Port, cfg.Postgres.DBName)),
+		slog.Int64("latency_ms", time.Since(pgStart).Milliseconds()),
+	)
 	defer pool.Close()
-	log.Info("postgres: connected")
 
 	// Kafka client
 	kopts := []kgo.Opt{
@@ -43,29 +66,32 @@ func main() {
 		kgo.DialTimeout(2 * time.Second),
 		kgo.RequestTimeoutOverhead(5 * time.Second),
 	}
+	kcStart := time.Now()
 	kc, err := kgo.NewClient(kopts...)
 	if err != nil {
-		log.Error("kafka: client init failed", "err", err)
-		os.Exit(1)
+		log.Error("kafka: client init failed", slog.Any("err", err))
+		return
 	}
+	log.Info("kafka: client ready",
+		slog.Int("brokers", len(cfg.Kafka.Brokers)),
+		slog.Int64("latency_ms", time.Since(kcStart).Milliseconds()),
+	)
 	defer kc.Close()
 
 	// Админская Kafka
 	adm := kadm.NewClient(kc)
 	defer adm.Close()
 
-	// Smoke че там по топикам
 	mdCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
 	md, err := adm.Metadata(mdCtx)
+	cancel()
 	if err != nil {
-		log.Error("kafka: metadata failed", "err", err)
-		os.Exit(1)
+		log.Error("kafka: metadata failed", slog.Any("err", err))
+		return
 	}
 	log.Info("kafka: metadata ok",
-		"brokers", len(md.Brokers),
-		"topics", len(md.Topics),
+		slog.Int("brokers", len(md.Brokers)),
+		slog.Int("topics", len(md.Topics)),
 	)
 
 	// Поднимаем все воркеры параллельно
@@ -89,30 +115,39 @@ func main() {
 		wr := worker.New(pool, kc, wc)
 
 		wg.Add(1)
-		go func(tbl string) {
+		go func(tbl string, wc worker.Config) {
 			defer wg.Done()
-			log.Info("outboxer: worker starting", "table", tbl, "poll", wc.PollInterval, "batch", wc.BatchSize)
+			log.Info("outboxer.worker: starting",
+				slog.String("table", tbl),
+				slog.Int("batch_size", wc.BatchSize),
+				slog.Int64("poll_interval_ms", wc.PollInterval.Milliseconds()),
+			)
 			if err := wr.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				log.Error("outboxer: worker stopped with error", "table", tbl, "err", err)
+				log.Error("outboxer.worker: stopped with error",
+					slog.String("table", tbl),
+					slog.Any("err", err),
+				)
 				errCh <- err
 				cancelAll()
 				return
 			}
-			log.Info("outboxer: worker stopped", "table", tbl)
-		}(w.OutboxTable)
+			log.Info("outboxer.worker: stopped", slog.String("table", tbl))
+		}(w.OutboxTable, wc)
 	}
 
 	// Ждём либо первый фатальный еррор, либо сигнал
 	select {
 	case <-ctx.Done():
-		log.Info("shutdown: stopping workers...")
+		log.Info("outboxer: shutdown: signal received")
 	case err := <-errCh:
-		log.Error("shutdown: error from worker", "err", err)
+		log.Error("outboxer: shutdown: error from worker", slog.Any("err", err))
 	}
 
 	// Тушим и ждём
 	cancelAll()
 	wg.Wait()
-	log.Info("bye", "uptime", time.Since(start))
 
+	log.Info("bye",
+		slog.Int64("uptime_ms", time.Since(start).Milliseconds()),
+	)
 }

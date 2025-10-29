@@ -2,18 +2,18 @@ package server
 
 import (
 	"context"
-	"github.com/redis/go-redis/v9"
-	"log/slog"
 	"net"
 	"time"
 
+	"log/slog"
+
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
-
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 
 	"goshop/services/gateway/api/checkoutpb"
 	"goshop/services/gateway/internal/service"
@@ -29,13 +29,17 @@ type Options struct {
 }
 
 func Start(ctx context.Context, opt Options) error {
-	if opt.Logger == nil {
-		opt.Logger = slog.Default()
+	log := opt.Logger
+	if log == nil {
+		log = slog.Default()
 	}
 
 	lis, err := net.Listen("tcp", opt.Addr)
 	if err != nil {
-		opt.Logger.Error("gateway: listen failed", "addr", opt.Addr, "err", err)
+		log.Error("gateway.server: listen failed",
+			slog.String("addr", opt.Addr),
+			slog.Any("err", err),
+		)
 		return err
 	}
 
@@ -43,26 +47,28 @@ func Start(ctx context.Context, opt Options) error {
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
 			logging.UnaryServerInterceptor(
-				slogLogger(opt.Logger),
+				slogLogger(log),
 				logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 			),
 		),
 	}
 	s := grpc.NewServer(serverOpts...)
 
+	// health
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(s, hs)
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 
+	// checkout service
 	svc, err := service.NewCheckoutService(ctx, service.Options{
 		OrdersAddr:  opt.OrdersGRPCAddr,
 		OrdersTO:    opt.OrdersTimeout,
-		Logger:      opt.Logger,
+		Logger:      log,
 		DefaultCurr: "RUB",
 		Redis:       opt.Redis,
 	})
 	if err != nil {
-		opt.Logger.Error("gateway: init checkout service failed", "err", err)
+		log.Error("gateway.server: checkout init failed", slog.Any("err", err))
 		_ = lis.Close()
 		return err
 	}
@@ -72,9 +78,9 @@ func Start(ctx context.Context, opt Options) error {
 		reflection.Register(s)
 	}
 
-	opt.Logger.Info("gateway: gRPC listening",
-		"addr", opt.Addr,
-		"orders_grpc_addr", opt.OrdersGRPCAddr,
+	log.Info("gateway.server: listening",
+		slog.String("addr", opt.Addr),
+		slog.String("orders_grpc_addr", opt.OrdersGRPCAddr),
 	)
 
 	serveErrCh := make(chan error, 1)
@@ -87,12 +93,12 @@ func Start(ctx context.Context, opt Options) error {
 
 	select {
 	case <-ctx.Done():
-		opt.Logger.Info("gateway: shutting down...")
+		log.Info("gateway.server: shutting down", slog.String("reason", "context done"))
 		s.GracefulStop()
 		return nil
 	case err := <-serveErrCh:
 		if err != nil {
-			opt.Logger.Error("gateway: serve failed", "err", err)
+			log.Error("gateway.server: serve stopped with error", slog.Any("err", err))
 			return err
 		}
 		return nil

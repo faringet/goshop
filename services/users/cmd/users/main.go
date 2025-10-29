@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,8 @@ import (
 	"goshop/services/users/internal/app"
 )
 
+const shutdownTimeout = 5 * time.Second
+
 func main() {
 	start := time.Now()
 
@@ -29,24 +32,34 @@ func main() {
 
 	// Config & Logger
 	cfg := config.New()
-	log := logger.NewPrettyLogger(cfg.Logger)
+	log := logger.NewLogger(cfg.Logger)
+	slog.SetDefault(log)
 
-	log.Info("boot: starting users service",
-		"app", cfg.AppName,
-		"http_addr", cfg.HTTP.Addr,
+	if err := cfg.Validate(); err != nil {
+		log.Error("config: invalid", slog.Any("err", err))
+		return
+	}
+
+	log.Info("users: starting",
+		slog.String("http.addr", cfg.HTTP.Addr),
 	)
-	log.Debug("boot: config (redacted)", "cfg", cfg.Redact())
+	log.Debug("users: config (redacted)", slog.Any("cfg", cfg.Redact()))
 
 	// Postgres
 	pgStart := time.Now()
 	pool, err := postgres.NewPool(ctx, cfg.Postgres)
 	if err != nil {
-		log.Error("postgres: connect failed", "host", cfg.Postgres.Host, "port", cfg.Postgres.Port, "db", cfg.Postgres.DBName, "err", err)
+		log.Error("postgres: connect failed",
+			slog.String("host", cfg.Postgres.Host),
+			slog.Int("port", cfg.Postgres.Port),
+			slog.String("db", cfg.Postgres.DBName),
+			slog.Any("err", err),
+		)
 		return
 	}
 	log.Info("postgres: connected",
-		"dsn", fmt.Sprintf("%s@%s:%d/%s", cfg.Postgres.User, cfg.Postgres.Host, cfg.Postgres.Port, cfg.Postgres.DBName),
-		"latency", time.Since(pgStart),
+		slog.String("dsn", fmt.Sprintf("%s@%s:%d/%s", cfg.Postgres.User, cfg.Postgres.Host, cfg.Postgres.Port, cfg.Postgres.DBName)),
+		slog.Int64("latency_ms", time.Since(pgStart).Milliseconds()),
 	)
 	defer pool.Close()
 
@@ -65,34 +78,33 @@ func main() {
 	})
 	log.Info("jwt: verifier initialized", "issuer", cfg.JWT.Issuer)
 
-	// HTTP module
+	// HTTP module + server
 	usersHTTP := httpmod.NewModule(log, pool, svc, jwtm)
-
-	// HTTP server with modules
-	srv := httpx.NewServer(cfg.HTTP, log,
-		httpx.WithModules(usersHTTP),
-	)
+	srv := httpx.NewServer(cfg.HTTP, log, httpx.WithModules(usersHTTP))
 
 	// HTTP Listen
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("http: listen failed", "err", err)
+			log.Error("http: listen failed", slog.Any("err", err))
 			stop()
 		}
 	}()
 
 	// Wait for signal
 	<-ctx.Done()
-	log.Info("shutdown: received signal, stopping...")
+	log.Info("users: shutdown: signal received")
 
-	// graceful HTTP
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Graceful shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("http: graceful shutdown failed", "err", err)
+		log.Error("http: graceful shutdown failed", slog.Any("err", err))
 	} else {
 		log.Info("http: server stopped cleanly")
 	}
-	log.Info("bye", "uptime", time.Since(start), "pid", os.Getpid())
+
+	log.Info("bye",
+		slog.Int("pid", os.Getpid()),
+		slog.Int64("uptime_ms", time.Since(start).Milliseconds()),
+	)
 }

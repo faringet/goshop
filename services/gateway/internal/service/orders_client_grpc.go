@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	orderpb "goshop/services/orders/api/orderspb"
 )
@@ -37,8 +38,17 @@ func NewOrdersGRPCClient(ctx context.Context, addr string, timeout time.Duration
 		grpc.WithDisableRetry(), // чтобы быстрее фейлиться при недоступности
 	)
 	if err != nil {
+		log.Error("gateway.orders.client: dial failed",
+			slog.String("addr", addr),
+			slog.Any("err", err),
+		)
 		return nil, fmt.Errorf("dial orders-grpc %s: %w", addr, err)
 	}
+
+	log.Info("gateway.orders.client: dialed",
+		slog.String("addr", addr),
+		slog.Int64("timeout_ms", timeout.Milliseconds()),
+	)
 
 	return &OrdersGRPCClient{
 		cc:      cc,
@@ -59,5 +69,14 @@ func (c *OrdersGRPCClient) CreateOrder(ctx context.Context, userID string, amoun
 		AmountCents: amountCents,
 		Currency:    currency,
 	}
-	return c.cli.CreateOrder(rctx, req)
+
+	resp, err := c.cli.CreateOrder(rctx, req)
+	if err != nil {
+		c.log.Warn("gateway.orders.client: create failed",
+			slog.String("grpc_code", status.Code(err).String()),
+			slog.Any("err", err),
+		)
+		return nil, err
+	}
+	return resp, nil
 }

@@ -40,28 +40,29 @@ func New(log *slog.Logger, db *pgxpool.Pool, kc *kgo.Client, cfg Config, proc *P
 }
 
 func (r *Runner) Run(ctx context.Context) error {
-	r.log.Info("payments-consumer: starting",
-		"group", r.cfg.Group,
-		"topic", r.cfg.Topic,
+	r.log.Info("payments.consumer: starting",
+		slog.String("group", r.cfg.Group),
+		slog.String("topic", r.cfg.Topic),
+		slog.Int64("session_timeout_ms", r.cfg.SessionTimeout.Milliseconds()),
+		slog.Int64("rebalance_timeout_ms", r.cfg.RebalanceTimeout.Milliseconds()),
 	)
 	defer close(r.done)
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.log.Info("payments-consumer: stopping (context done)")
+			r.log.Info("payments.consumer: stopping", slog.String("reason", "context done"))
 			return ctx.Err()
 		default:
 		}
 
 		fetches := r.kc.PollFetches(ctx)
-
 		if errs := fetches.Errors(); len(errs) > 0 {
 			for _, fe := range errs {
-				r.log.Warn("kafka fetch error",
-					"topic", fe.Topic,
-					"partition", fe.Partition,
-					"err", fe.Err,
+				r.log.Warn("payments.consumer.kafka: fetch error",
+					slog.String("topic", fe.Topic),
+					slog.Int64("partition", int64(fe.Partition)),
+					slog.Any("err", fe.Err),
 				)
 			}
 			continue
@@ -71,41 +72,14 @@ func (r *Runner) Run(ctx context.Context) error {
 		for !iter.Done() {
 			rec := iter.Next()
 
-			inboxID, inserted, err := r.insertInbox(ctx, rec)
-			if err != nil {
-				r.log.Error("inbox insert failed",
-					"topic", rec.Topic,
-					"partition", rec.Partition,
-					"offset", rec.Offset,
-					"err", err,
+			if err := r.proc.ProcessRecord(ctx, rec); err != nil && !errors.Is(err, context.Canceled) {
+				r.log.Error("payments.consumer.processor: error",
+					slog.String("topic", rec.Topic),
+					slog.Int64("partition", int64(rec.Partition)),
+					slog.Int64("offset", rec.Offset),
+					slog.Any("err", err),
 				)
 				continue
-			}
-			if !inserted {
-				continue
-			}
-
-			r.log.Info("inbox ok",
-				"id", inboxID,
-				"topic", rec.Topic,
-				"partition", rec.Partition,
-				"offset", rec.Offset,
-			)
-
-			if r.proc != nil {
-				if err := r.proc.ProcessRecord(ctx, rec); err != nil {
-					r.log.Error("processor error",
-						"topic", rec.Topic,
-						"partition", rec.Partition,
-						"offset", rec.Offset,
-						"err", err,
-					)
-					continue
-				}
-			}
-
-			if err := r.markProcessed(ctx, inboxID); err != nil {
-				r.log.Warn("inbox markProcessed failed", "id", inboxID, "err", err)
 			}
 		}
 	}

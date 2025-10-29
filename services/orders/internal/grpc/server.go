@@ -2,14 +2,14 @@ package grpcsvr
 
 import (
 	"context"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log/slog"
 	"net"
 	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"goshop/services/orders/api/orderspb"
 	"goshop/services/orders/internal/adapters/repo/orderpg"
@@ -41,7 +41,6 @@ func (s *Server) CreateOrder(ctx context.Context, in *orderspb.CreateOrderReques
 		curr = "RUB"
 	}
 
-	// пишем заказ + outbox в одной транзакции (как у тебя в repo.Create)
 	ord, err := s.repo.Create(ctx, orderpg.CreateParams{
 		UserID:        uid,
 		AmountCents:   in.AmountCents,
@@ -50,11 +49,9 @@ func (s *Server) CreateOrder(ctx context.Context, in *orderspb.CreateOrderReques
 		OutboxHeaders: map[string]string{"event-type": "order.created", "source": "orders-grpc"},
 	})
 	if err != nil {
-		// заверни в codes.Internal или другой уместный статус
 		return nil, status.Errorf(codes.Internal, "create order: %v", err)
 	}
 
-	// формируем ответ по новому proto (в нём НЕТ user_id и updated_at)
 	resp := &orderspb.CreateOrderResponse{
 		OrderId:     ord.ID.String(),
 		Status:      toPbStatus(ord.Status),
@@ -71,7 +68,10 @@ func Start(ctx context.Context, opt Options) error {
 	}
 	lis, err := net.Listen("tcp", opt.Addr)
 	if err != nil {
-		opt.Logger.Error("orders-grpc: listen failed", "addr", opt.Addr, "err", err)
+		opt.Logger.Error("orders.grpc: listen failed",
+			slog.String("addr", opt.Addr),
+			slog.Any("err", err),
+		)
 		return err
 	}
 
@@ -80,16 +80,17 @@ func Start(ctx context.Context, opt Options) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		opt.Logger.Info("orders-grpc: listening", "addr", opt.Addr)
+		opt.Logger.Info("orders.grpc: listening", slog.String("addr", opt.Addr))
 		errCh <- s.Serve(lis)
 	}()
 
 	select {
 	case <-ctx.Done():
-		opt.Logger.Info("orders-grpc: shutting down")
+		opt.Logger.Info("orders.grpc: shutting down", slog.String("reason", "context done"))
 		s.GracefulStop()
 		return nil
 	case err := <-errCh:
+		opt.Logger.Error("orders.grpc: serve stopped with error", slog.Any("err", err))
 		return err
 	}
 }

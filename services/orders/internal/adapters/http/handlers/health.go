@@ -32,8 +32,10 @@ func (h *HealthHandlers) Live(c *gin.Context) {
 func (h *HealthHandlers) Ready(c *gin.Context) {
 	noCache(c)
 
+	l := reqLog(c, h.log)
+
 	if h.db == nil {
-		h.log.Error("readiness failed: db pool is nil",
+		l.Error("orders.health.ready: db pool is nil",
 			slog.String("path", c.FullPath()))
 		c.String(http.StatusServiceUnavailable, "db not ready")
 		return
@@ -43,7 +45,7 @@ func (h *HealthHandlers) Ready(c *gin.Context) {
 	defer cancel()
 
 	if err := h.db.Ping(ctx); err != nil {
-		h.log.Error("readiness failed: db ping",
+		l.Error("orders.health.ready: db ping failed",
 			slog.String("path", c.FullPath()),
 			slog.Any("err", err))
 		c.String(http.StatusServiceUnavailable, "db not ready")
@@ -56,8 +58,10 @@ func (h *HealthHandlers) Ready(c *gin.Context) {
 func (h *HealthHandlers) DBPing(c *gin.Context) {
 	noCache(c)
 
+	l := reqLog(c, h.log)
+
 	if h.db == nil {
-		h.log.Error("db ping failed: db pool is nil",
+		l.Error("orders.health.dbping: db pool is nil",
 			slog.String("path", c.FullPath()))
 		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "fail", "err": "db is nil"})
 		return
@@ -69,7 +73,7 @@ func (h *HealthHandlers) DBPing(c *gin.Context) {
 
 	var one int
 	if err := h.db.QueryRow(ctx, "select 1").Scan(&one); err != nil || one != 1 {
-		h.log.Error("db ping failed: query error",
+		l.Error("orders.health.dbping: query failed",
 			slog.String("path", c.FullPath()),
 			slog.Any("err", err))
 		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "fail", "err": "db query failed"})
