@@ -54,7 +54,12 @@ func (p *Processor) ProcessRecord(ctx context.Context, rec *kgo.Record) error {
 		Event string `json:"event"`
 	}
 	if err := json.Unmarshal(rec.Value, &meta); err != nil {
-		p.log.Warn("payments: skip non-json payload", "err", err)
+		p.log.Warn("payments.processor: skip non-json payload",
+			slog.Any("err", err),
+			slog.String("topic", rec.Topic),
+			slog.Int64("partition", int64(rec.Partition)),
+			slog.Int64("offset", rec.Offset),
+		)
 		return nil
 	}
 
@@ -62,7 +67,12 @@ func (p *Processor) ProcessRecord(ctx context.Context, rec *kgo.Record) error {
 	case "order.created":
 		var oc orderCreated
 		if err := json.Unmarshal(rec.Value, &oc); err != nil {
-			p.log.Warn("payments: bad order.created payload", "err", err)
+			p.log.Warn("payments.processor: bad order.created payload",
+				slog.Any("err", err),
+				slog.String("topic", rec.Topic),
+				slog.Int64("partition", int64(rec.Partition)),
+				slog.Int64("offset", rec.Offset),
+			)
 			return nil
 		}
 		return p.handleOrderCreated(ctx, oc)
@@ -136,6 +146,10 @@ func (p *Processor) handleOrderCreated(ctx context.Context, oc orderCreated) err
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	p.log.Info("payments: processed", "order_id", oc.OrderID, "payment_id", paymentID, "status", status)
+	p.log.Info("payments.processor: processed",
+		slog.String("order_id", oc.OrderID.String()),
+		slog.String("payment_id", paymentID.String()),
+		slog.String("status", status),
+	)
 	return nil
 }
