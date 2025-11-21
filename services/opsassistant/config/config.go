@@ -51,7 +51,7 @@ func (c *OpsAssistant) Validate() error {
 
 func New() *OpsAssistant {
 	c := cfg.MustLoad[OpsAssistant](cfg.Options{
-		Paths:         []string{"./services/opsassistant/config", "./configs", "/etc/goshop"},
+		Paths:         []string{"./config", "./services/opsassistant/config", "./configs", "/etc/goshop"},
 		Names:         []string{"defaults", "opsassistant", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "OPSASSISTANT",

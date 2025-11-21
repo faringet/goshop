@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 type Config struct {
@@ -23,6 +23,7 @@ type Config struct {
 }
 
 type Worker struct {
+	log *slog.Logger
 	db  *pgxpool.Pool
 	kc  *kgo.Client
 	cfg Config
@@ -45,19 +46,35 @@ func New(db *pgxpool.Pool, kc *kgo.Client, cfg Config) *Worker {
 	if cfg.BackoffBaseMS <= 0 {
 		cfg.BackoffBaseMS = 500
 	}
-	return &Worker{db: db, kc: kc, cfg: cfg, tbl: cfg.OutboxTable}
+	return &Worker{
+		log: slog.Default(),
+		db:  db, kc: kc,
+		cfg: cfg,
+		tbl: cfg.OutboxTable,
+	}
 }
 
 func (w *Worker) Run(ctx context.Context) error {
+	w.log.Info("outboxer.worker: running",
+		slog.String("table", w.tbl),
+		slog.Int("batch_size", w.cfg.BatchSize),
+		slog.Int64("poll_interval_ms", w.cfg.PollInterval.Milliseconds()),
+		slog.Int("max_retries", w.cfg.MaxRetries),
+	)
 	ticker := time.NewTicker(w.cfg.PollInterval)
 	defer ticker.Stop()
 
 	for {
 		if err := w.processBatch(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			w.log.Error("outboxer.worker: batch failed",
+				slog.String("table", w.tbl),
+				slog.Any("err", err),
+			)
 		}
 
 		select {
 		case <-ctx.Done():
+			w.log.Info("outboxer.worker: stopping", slog.String("table", w.tbl))
 			return ctx.Err()
 		case <-ticker.C:
 		}
@@ -65,6 +82,8 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) processBatch(ctx context.Context) error {
+	start := time.Now()
+
 	tx, err := w.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -110,6 +129,10 @@ LIMIT $1;`, w.tbl)
 	if len(batch) == 0 {
 		return nil
 	}
+	w.log.Info("outboxer.worker: picked",
+		slog.String("table", w.tbl),
+		slog.Int("count", len(batch)),
+	)
 
 	records := make([]*kgo.Record, 0, len(batch))
 	type hdr struct{ K, V string }
@@ -133,10 +156,14 @@ LIMIT $1;`, w.tbl)
 	pctx, cancel := context.WithTimeout(ctx, w.cfg.ProduceTimeout)
 	defer cancel()
 	results := w.kc.ProduceSync(pctx, records...)
+	var okCnt, failCnt int
+
 	for i, res := range results {
 		it := batch[i]
 
 		if res.Err != nil {
+			failCnt++
+
 			backoff := time.Duration(w.cfg.BackoffBaseMS) * time.Millisecond
 			for j := 0; j < it.retries; j++ {
 				backoff *= 2
@@ -156,6 +183,15 @@ WHERE id = $1;`, w.tbl)
 			if _, err := tx.Exec(ctx, fail, it.id, res.Err.Error(), backoff.Milliseconds()); err != nil {
 				return fmt.Errorf("mark fail %s: %w", w.tbl, err)
 			}
+
+			w.log.Warn("outboxer.worker: produce failed",
+				slog.String("table", w.tbl),
+				slog.Int64("id", it.id),
+				slog.String("topic", it.topic),
+				slog.Int("next_retry", it.retries+1),
+				slog.Int64("backoff_ms", backoff.Milliseconds()),
+				slog.Any("err", res.Err),
+			)
 			continue
 		}
 
@@ -168,17 +204,19 @@ WHERE id = $1;`, w.tbl)
 		if _, err := tx.Exec(ctx, ok, it.id); err != nil {
 			return fmt.Errorf("mark ok %s: %w", w.tbl, err)
 		}
+		okCnt++
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
-	return nil
-}
 
-// PingKafka todo прикручу позднее
-func (w *Worker) PingKafka(ctx context.Context) error {
-	req := kmsg.NewMetadataRequest()
-	_, err := req.RequestWith(ctx, w.kc)
-	return err
+	w.log.Info("outboxer.worker: batch committed",
+		slog.String("table", w.tbl),
+		slog.Int("published", okCnt),
+		slog.Int("retriable", failCnt),
+		slog.Int("picked", len(batch)),
+		slog.Int64("latency_ms", time.Since(start).Milliseconds()),
+	)
+	return nil
 }

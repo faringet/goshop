@@ -37,11 +37,17 @@ tmp/
 
 # app config (local only)
 services/users/config/defaults.yaml
+services/users/config/config.yaml
 services/orders/config/defaults.yaml
+services/orders/config/config.yaml
 services/outboxer/config/defaults.yaml
+services/outboxer/config/config.yaml
 services/payments/config/defaults.yaml
+services/payments/config/config.yaml
 services/gateway/config/defaults.yaml
+services/gateway/config/config.yaml
 services/opsassistant/config/defaults.yaml
+services/opsassistant/config/config.yaml
 
 
 

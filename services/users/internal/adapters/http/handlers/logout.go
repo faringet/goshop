@@ -27,7 +27,7 @@ func (h *UsersHandlers) Logout(c *gin.Context) {
 
 	claims, err := h.jwtm.ParseAndVerify(in.RefreshToken)
 	if err != nil || claims == nil || claims.ID == "" {
-		l.Warn("logout: invalid refresh", slog.Any("err", err))
+		l.Warn("users.logout: invalid refresh", slog.Any("err", err))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return
 	}
@@ -39,7 +39,7 @@ func (h *UsersHandlers) Logout(c *gin.Context) {
 	}
 
 	if err := h.sessions.RevokeSession(c.Request.Context(), sessID); err != nil {
-		l.Error("logout: revoke session failed", slog.Any("err", err))
+		l.Error("users.logout: revoke session failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -66,7 +66,7 @@ func (h *UsersHandlers) LogoutAll(c *gin.Context) {
 
 	n, err := h.sessions.RevokeAll(c.Request.Context(), userID)
 	if err != nil {
-		l.Error("logout_all: revoke all failed", slog.Any("err", err))
+		l.Error("users.logout_all: revoke all failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}

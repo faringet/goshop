@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5" // для pgx.ErrNoRows
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -40,16 +41,18 @@ func New(log *slog.Logger, db *pgxpool.Pool, kc *kgo.Client, cfg Config, proc *P
 }
 
 func (r *Runner) Run(ctx context.Context) error {
-	r.log.Info("orders-consumer: starting",
-		"group", r.cfg.Group,
-		"topic", r.cfg.Topic,
+	r.log.Info("orders.consumer: starting",
+		slog.String("group", r.cfg.Group),
+		slog.String("topic", r.cfg.Topic),
+		slog.Int64("session_timeout_ms", r.cfg.SessionTimeout.Milliseconds()),
+		slog.Int64("rebalance_timeout_ms", r.cfg.RebalanceTimeout.Milliseconds()),
 	)
 	defer close(r.done)
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.log.Info("orders-consumer: stopping (context done)")
+			r.log.Info("orders.consumer: stopping", slog.String("reason", "context done"))
 			return ctx.Err()
 		default:
 		}
@@ -57,10 +60,10 @@ func (r *Runner) Run(ctx context.Context) error {
 		fetches := r.kc.PollFetches(ctx)
 		if errs := fetches.Errors(); len(errs) > 0 {
 			for _, fe := range errs {
-				r.log.Warn("kafka fetch error",
-					"topic", fe.Topic,
-					"partition", fe.Partition,
-					"err", fe.Err,
+				r.log.Warn("orders.consumer.kafka: fetch error",
+					slog.String("topic", fe.Topic),
+					slog.Int64("partition", int64(fe.Partition)),
+					slog.Any("err", fe.Err),
 				)
 			}
 			continue
@@ -72,39 +75,47 @@ func (r *Runner) Run(ctx context.Context) error {
 
 			inboxID, inserted, err := r.insertInbox(ctx, rec)
 			if err != nil {
-				r.log.Error("inbox insert failed",
-					"topic", rec.Topic,
-					"partition", rec.Partition,
-					"offset", rec.Offset,
-					"err", err,
+				r.log.Error("orders.consumer.inbox: insert failed",
+					slog.String("topic", rec.Topic),
+					slog.Int64("partition", int64(rec.Partition)),
+					slog.Int64("offset", rec.Offset),
+					slog.Any("err", err),
 				)
 				continue
 			}
 			if !inserted {
+				r.log.Debug("orders.consumer.inbox: duplicate, skip",
+					slog.String("topic", rec.Topic),
+					slog.Int64("partition", int64(rec.Partition)),
+					slog.Int64("offset", rec.Offset),
+				)
 				continue
 			}
 
-			r.log.Info("inbox ok",
-				"id", inboxID,
-				"topic", rec.Topic,
-				"partition", rec.Partition,
-				"offset", rec.Offset,
+			r.log.Info("orders.consumer.inbox: inserted",
+				slog.Int64("inbox_id", inboxID),
+				slog.String("topic", rec.Topic),
+				slog.Int64("partition", int64(rec.Partition)),
+				slog.Int64("offset", rec.Offset),
 			)
 
 			if r.proc != nil {
 				if err := r.proc.ProcessRecord(ctx, rec); err != nil {
-					r.log.Error("processor error",
-						"topic", rec.Topic,
-						"partition", rec.Partition,
-						"offset", rec.Offset,
-						"err", err,
+					r.log.Error("orders.consumer.processor: error",
+						slog.String("topic", rec.Topic),
+						slog.Int64("partition", int64(rec.Partition)),
+						slog.Int64("offset", rec.Offset),
+						slog.Any("err", err),
 					)
 					continue
 				}
 			}
 
 			if err := r.markProcessed(ctx, inboxID); err != nil {
-				r.log.Warn("inbox markProcessed failed", "id", inboxID, "err", err)
+				r.log.Warn("orders.consumer.inbox: mark processed failed",
+					slog.Int64("inbox_id", inboxID),
+					slog.Any("err", err),
+				)
 			}
 		}
 	}
@@ -123,7 +134,7 @@ func (r *Runner) insertInbox(ctx context.Context, rec *kgo.Record) (int64, bool,
 	`, rec.Topic, rec.Partition, rec.Offset, rec.Key, rec.Value).Scan(&id)
 
 	if err != nil {
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false, nil
 		}
 		return 0, false, fmt.Errorf("insert orders_inbox: %w", err)

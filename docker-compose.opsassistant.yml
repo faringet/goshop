@@ -1,0 +1,25 @@
+services:
+  opsassistant:
+    build:
+      context: .
+      dockerfile: services/opsassistant/Dockerfile
+      target: opsassistant-app
+    environment:
+      CONFIG_FILE: /app/config/config.yaml
+      OPSASSISTANT_OLLAMA_BASE_URL: "http://ollama:11434"
+    depends_on:
+      postgres16:   { condition: service_healthy }
+      ollama:       { condition: service_healthy }
+      ollama-pull:  { condition: service_completed_successfully }
+    ports:
+      - "9191:9191"
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:9191"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [kafka-net]
+    restart: unless-stopped
+
+networks:
+  kafka-net: {}

@@ -3,8 +3,6 @@ package handlers
 import (
 	"crypto/sha256"
 	"errors"
-	"goshop/pkg/jwtauth"
-	"goshop/services/users/internal/adapters/repo/sessionpg"
 	"net"
 	"net/http"
 	"time"
@@ -12,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"log/slog"
 
+	"goshop/pkg/jwtauth"
+	"goshop/services/users/internal/adapters/repo/sessionpg"
 	"goshop/services/users/internal/adapters/repo/userpg"
 	"goshop/services/users/internal/app"
 	domain "goshop/services/users/internal/domain/user"
@@ -52,12 +52,7 @@ type loginResp struct {
 func (h *UsersHandlers) Register(c *gin.Context) {
 	noCache(c)
 
-	l := h.log
-	if rl, ok := c.Get("req_logger"); ok {
-		if reqLog, ok := rl.(*slog.Logger); ok && reqLog != nil {
-			l = reqLog
-		}
-	}
+	l := ReqLog(c, h.log)
 
 	var in registerReq
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -82,7 +77,7 @@ func (h *UsersHandlers) Register(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "email already taken"})
 			return
 		default:
-			l.Error("users.register failed", slog.Any("err", err))
+			l.Error("users.register: failed", slog.Any("err", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
@@ -118,15 +113,14 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 
 	access, refresh, jti, err := h.jwtm.GeneratePair(u.ID.String(), u.Email)
 	if err != nil {
-		l.Error("jwt.GeneratePair failed", slog.Any("err", err))
+		l.Error("users.login: jwt.GeneratePair failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
-	//Достаём exp из только что выпущенного refresh
 	claims, err := h.jwtm.ParseAndVerify(refresh)
 	if err != nil || claims.ExpiresAt == nil {
-		l.Error("jwt.ParseAndVerify(refresh) failed", slog.Any("err", err))
+		l.Error("users.login: parse refresh failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -145,7 +139,7 @@ func (h *UsersHandlers) Login(c *gin.Context) {
 		ua,
 		ip,
 	); err != nil {
-		l.Error("sessions.CreateSession failed", slog.Any("err", err))
+		l.Error("users.login: sessions.CreateSession failed", slog.Any("err", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}

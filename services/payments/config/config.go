@@ -37,7 +37,7 @@ func (p *Payments) Validate() error {
 // New — грузим конфиг по схеме: файлы -> ENV (с префиксом PAYMENTS_)
 func New() *Payments {
 	c := cfg.MustLoad[Payments](cfg.Options{
-		Paths:         []string{"./services/payments/config", "./configs", "/etc/goshop"},
+		Paths:         []string{"./config", "./services/payments/config", "./configs", "/etc/goshop"},
 		Names:         []string{"defaults", "payments", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "PAYMENTS",

@@ -47,7 +47,7 @@ func (u Users) Redact() any {
 // New — грузим конфиг по схеме: файлы -> ENV (с префиксом USERS_)
 func New() *Users {
 	c := cfg.MustLoad[Users](cfg.Options{
-		Paths:         []string{"./services/users/config", "./configs", "/etc/goshop"},
+		Paths:         []string{"./config", "./services/users/config", "./configs", "/etc/goshop"},
 		Names:         []string{"defaults", "users", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "USERS",
