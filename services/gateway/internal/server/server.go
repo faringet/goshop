@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"net"
 	"time"
 
@@ -45,11 +47,14 @@ func Start(ctx context.Context, opt Options) error {
 
 	serverOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
-			recovery.UnaryServerInterceptor(),
-			logging.UnaryServerInterceptor(
-				slogLogger(log),
-				logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(
+					slogLogger(log),
+					logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+				),
+				selector.MatchFunc(skipHealthLogs),
 			),
+			recovery.UnaryServerInterceptor(),
 		),
 	}
 	s := grpc.NewServer(serverOpts...)
@@ -103,6 +108,10 @@ func Start(ctx context.Context, opt Options) error {
 		}
 		return nil
 	}
+}
+
+func skipHealthLogs(_ context.Context, c interceptors.CallMeta) bool {
+	return c.Service != "grpc.health.v1.Health"
 }
 
 func slogLogger(log *slog.Logger) logging.Logger {
