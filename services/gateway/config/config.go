@@ -49,7 +49,7 @@ func (g *Gateway) Validate() error {
 
 func New() *Gateway {
 	c := cfg.MustLoad[Gateway](cfg.Options{
-		Paths:         []string{"./services/gateway/config", "./configs", "/etc/goshop"},
+		Paths:         []string{"./config", "./services/gateway/config", "./configs", "/etc/goshop"},
 		Names:         []string{"defaults", "gateway", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "GATEWAY",

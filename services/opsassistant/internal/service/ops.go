@@ -34,18 +34,34 @@ func New(opt Options) *OpsService {
 func (s *OpsService) GetTimeline(ctx context.Context, in *opspb.GetTimelineRequest) (*opspb.GetTimelineResponse, error) {
 	evs, err := s.tl.Timeline(ctx, in.OrderId)
 	if err != nil {
+		s.log.Error("opsassistant.service.timeline: fetch failed",
+			slog.String("order_id", in.OrderId),
+			slog.Any("err", err),
+		)
 		return nil, fmt.Errorf("timeline: %w", err)
 	}
+
+	s.log.Info("opsassistant.service.timeline: ok",
+		slog.String("order_id", in.OrderId),
+		slog.Int("events", len(evs)),
+	)
+
 	return &opspb.GetTimelineResponse{Timeline: timeline.RenderMarkdown(evs)}, nil
 }
 
 func (s *OpsService) ExplainOrder(ctx context.Context, in *opspb.ExplainOrderRequest) (*opspb.ExplainOrderResponse, error) {
 	evs, err := s.tl.Timeline(ctx, in.OrderId)
 	if err != nil {
+		s.log.Error("opsassistant.service.timeline: fetch failed",
+			slog.String("order_id", in.OrderId),
+			slog.Any("err", err),
+		)
 		return nil, fmt.Errorf("timeline: %w", err)
 	}
 
 	md := timeline.RenderMarkdown(evs)
+	usedDefault := strings.TrimSpace(in.Question) == ""
+
 	sys := "Ты — SRE помощник. Отвечай кратко и по делу. Делай выводы строго из контекста. Если данных не хватает — скажи, чего не хватает."
 	user := strings.TrimSpace(fmt.Sprintf(
 		"Вопрос: %s\nКонтекст по заказу %s:\n%s",
@@ -55,8 +71,18 @@ func (s *OpsService) ExplainOrder(ctx context.Context, in *opspb.ExplainOrderReq
 
 	ans, err := s.llm.Chat(ctx, sys, user)
 	if err != nil {
+		s.log.Error("opsassistant.service.llm: chat failed",
+			slog.String("order_id", in.OrderId),
+			slog.Bool("default_question", usedDefault),
+			slog.Any("err", err),
+		)
 		return nil, fmt.Errorf("llm: %w", err)
 	}
+
+	s.log.Info("opsassistant.service.llm: chat ok",
+		slog.String("order_id", in.OrderId),
+		slog.Bool("default_question", usedDefault),
+	)
 
 	return &opspb.ExplainOrderResponse{
 		Answer:   ans,

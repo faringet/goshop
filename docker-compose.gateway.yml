@@ -1,0 +1,23 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+      target: gateway-app
+    environment:
+      CONFIG_FILE: /app/config/config.yaml
+    depends_on:
+      redis:  { condition: service_healthy }
+      orders: { condition: service_healthy }
+    ports:
+      - "7071:7070"
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=127.0.0.1:7070", "-connect-timeout=1s", "-rpc-timeout=1s"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [kafka-net]
+    restart: unless-stopped
+
+networks:
+  kafka-net: {}

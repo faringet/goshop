@@ -60,7 +60,7 @@ func (o *Orders) Validate() error {
 // New — грузим конфиг по схеме: файлы -> ENV (с префиксом ORDERS_)
 func New() *Orders {
 	c := cfg.MustLoad[Orders](cfg.Options{
-		Paths:         []string{"./services/orders/config", "./configs", "/etc/goshop"},
+		Paths:         []string{"./config", "./services/orders/config", "./configs", "/etc/goshop"},
 		Names:         []string{"defaults", "orders", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "ORDERS",

@@ -1,0 +1,22 @@
+services:
+  outboxer:
+    build:
+      context: .
+      dockerfile: services/outboxer/Dockerfile
+      target: outboxer-app
+    #container_name: outboxer
+    environment:
+      CONFIG_FILE: /app/config/config.yaml
+    depends_on:
+      postgres16: { condition: service_healthy }
+      kafka:      { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z -w 2 postgres16 5432 && nc -z -w 2 kafka 9092"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [kafka-net]
+    restart: unless-stopped
+
+networks:
+  kafka-net: {}

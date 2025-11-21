@@ -1,0 +1,40 @@
+services:
+  payments-migrate:
+    build:
+      context: .
+      dockerfile: services/payments/Dockerfile
+      target: payments-migrate
+    environment:
+      DATABASE_URL: postgres://goshop:goshop@postgres16:5432/goshop?sslmode=disable&search_path=payments,public
+      RETRIES: "120"
+      SLEEP_SECONDS: "2"
+    depends_on:
+      postgres16:
+        condition: service_healthy
+    networks: [kafka-net]
+    restart: "no"
+
+  payments:
+    build:
+      context: .
+      dockerfile: services/payments/Dockerfile
+      target: payments-app
+    container_name: payments
+    environment:
+      CONFIG_FILE: /app/config/config.yaml
+    depends_on:
+      postgres16:       { condition: service_healthy }
+      kafka:            { condition: service_healthy }
+      payments-migrate: { condition: service_completed_successfully }
+    ports:
+      - "5082:8082"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8081"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [kafka-net]
+    restart: unless-stopped
+
+networks:
+  kafka-net: {}

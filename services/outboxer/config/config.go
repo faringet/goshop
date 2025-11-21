@@ -52,7 +52,7 @@ func (c *Outboxer) AllWorkers() []Worker {
 // New — грузим конфиг по схеме: файлы -> ENV (с префиксом OUTBOXER_)
 func New() *Outboxer {
 	c := cfg.MustLoad[Outboxer](cfg.Options{
-		Paths:         []string{"./services/outboxer/config", "./configs", "/etc/goshop"},
+		Paths:         []string{"./config", "./services/outboxer/config", "./configs", "/etc/goshop"},
 		Names:         []string{"defaults", "outboxer", "config"},
 		Type:          "yaml",
 		EnvPrefix:     "OUTBOXER",
