@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"goshop/pkg/metrics"
 	"log/slog"
 	"net/http"
 	"os"
@@ -45,6 +46,20 @@ func main() {
 	)
 	log.Debug("users: config (redacted)", slog.Any("cfg", cfg.Redact()))
 
+	// Metrics
+	m, err := metrics.Init(log, metrics.Config{
+		Service:   "users",
+		Namespace: "goshop",
+	})
+	if err != nil {
+		log.Warn("metrics: init failed", "err", err)
+	} else {
+		defer m.Shutdown(context.Background())
+	}
+
+	// HTTP middleware metrics
+	httpm := metrics.NewHTTPMetrics(m.Registry(), "goshop", "users", metrics.WithBuckets(metrics.WebFastBuckets))
+
 	// Postgres
 	pgStart := time.Now()
 	pool, err := postgres.NewPool(ctx, cfg.Postgres)
@@ -63,6 +78,10 @@ func main() {
 	)
 	defer pool.Close()
 
+	// Postgres metrics
+	pgc := metrics.NewPGXPoolCollector(pool, "goshop", "users")
+	m.Registry().MustRegister(pgc)
+
 	// Domain wiring
 	repo := userpg.NewRepo(pool)
 	svc := app.NewService(repo, 12)
@@ -80,7 +99,7 @@ func main() {
 
 	// HTTP module + server
 	usersHTTP := httpmod.NewModule(log, pool, svc, jwtm)
-	srv := httpx.NewServer(cfg.HTTP, log, httpx.WithModules(usersHTTP))
+	srv := httpx.NewServer(cfg.HTTP, log, httpx.WithMiddleware(metrics.GinMiddleware(httpm)), httpx.WithModules(usersHTTP))
 
 	// HTTP Listen
 	go func() {
