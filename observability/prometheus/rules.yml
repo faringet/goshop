@@ -1,0 +1,128 @@
+groups:
+
+  # ───────────────────────────────── users: HTTP ─────────────────────────────────
+  - name: users-recording
+    interval: 15s
+    rules:
+      # Общий RPS (1m)
+      - record: users:http_rps:1m
+        expr: sum(rate(goshop_users_http_requests_total[1m]))
+
+      # RPS по методам/путям/кодам (для столбиков и таблиц)
+      - record: users:http_rps_by_path:1m
+        expr: sum by (method, path, code) (rate(goshop_users_http_requests_total[1m]))
+
+      # Доля ошибок за 5m (исключаем 2xx и 3xx)
+      - record: users:http_error_ratio:5m
+        expr: |
+          ( sum(rate(goshop_users_http_requests_total{code!~"2..|3.."}[5m])) /
+            clamp_min(sum(rate(goshop_users_http_requests_total[5m])), 1) )
+
+      # In-flight HTTP
+      - record: users:http_in_flight
+        expr: sum(goshop_users_http_in_flight_requests)
+
+      # Латентности p50/p90/p99 (5m)
+      - record: users:http_lat_p50:5m
+        expr: |
+          histogram_quantile(
+            0.50,
+            sum by (le) (rate(goshop_users_http_request_duration_seconds_bucket[5m]))
+          )
+      - record: users:http_lat_p90:5m
+        expr: |
+          histogram_quantile(
+            0.90,
+            sum by (le) (rate(goshop_users_http_request_duration_seconds_bucket[5m]))
+          )
+      - record: users:http_lat_p99:5m
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(goshop_users_http_request_duration_seconds_bucket[5m]))
+          )
+
+  # ───────────────────────────────── users: PGX pool ─────────────────────────────
+  - name: users-pgx
+    interval: 15s
+    rules:
+      # Gauges/агрегации
+      - record: users:pgx_idle
+        expr: sum(goshop_users_pgx_idle_conns)
+      - record: users:pgx_acquired
+        expr: sum(goshop_users_pgx_acquired_conns)
+      - record: users:pgx_total
+        expr: sum(goshop_users_pgx_total_conns)
+      - record: users:pgx_max
+        expr: sum(goshop_users_pgx_max_conns)
+      - record: users:pgx_utilization
+        expr: users:pgx_acquired / clamp_min(users:pgx_max, 1)
+
+      # Rates
+      - record: users:pgx_acquire_rps
+        expr: sum(rate(goshop_users_pgx_acquire_total[5m]))
+      - record: users:pgx_wait_rps
+        expr: sum(rate(goshop_users_pgx_acquire_empty_total[5m]))
+      - record: users:pgx_new_conns_rps
+        expr: sum(rate(goshop_users_pgx_new_conns_total[5m]))
+      - record: users:pgx_destroy_idle_rps
+        expr: sum(rate(goshop_users_pgx_max_idle_destroy_total[5m]))
+      - record: users:pgx_destroy_life_rps
+        expr: sum(rate(goshop_users_pgx_max_lifetime_destroy_total[5m]))
+
+      # Средние задержки (мс)
+      - record: users:pgx_avg_acquire_ms
+        expr: |
+          1000 * sum(rate(goshop_users_pgx_acquire_duration_seconds_total[5m]))
+                / clamp_min(sum(rate(goshop_users_pgx_acquire_total[5m])), 1)
+      - record: users:pgx_avg_wait_ms
+        expr: |
+          1000 * sum(rate(goshop_users_pgx_acquire_empty_wait_seconds_total[5m]))
+                / clamp_min(sum(rate(goshop_users_pgx_acquire_empty_total[5m])), 1)
+
+  # ───────────────────────────────── gateway: gRPC ───────────────────────────────
+  - name: gateway-grpc-recording
+    interval: 15s
+    rules:
+      # Общий RPS, без health
+      - record: gateway:grpc_rps:1m
+        expr: sum(rate(goshop_gateway_grpc_requests_total{grpc_service!="grpc.health.v1"}[1m]))
+
+      # RPS по сервису/методу/коду (для столбиков/таблиц), без health
+      - record: gateway:grpc_rps_by_method:1m
+        expr: |
+          sum by (grpc_service, grpc_method, code)
+            (rate(goshop_gateway_grpc_requests_total{grpc_service!="grpc.health.v1"}[1m]))
+
+      # Error ratio (5m), без health
+      - record: gateway:grpc_error_ratio:5m
+        expr: |
+          ( sum(rate(goshop_gateway_grpc_requests_total{grpc_service!="grpc.health.v1", code!="OK"}[5m])) /
+            clamp_min(sum(rate(goshop_gateway_grpc_requests_total{grpc_service!="grpc.health.v1"}[5m])), 1) )
+
+      # In-flight gRPC
+      - record: gateway:grpc_in_flight
+        expr: sum(goshop_gateway_grpc_in_flight_requests)
+
+      # Латентности p50/p90/p99 (5m), без health
+      - record: gateway:grpc_lat_p50:5m
+        expr: |
+          histogram_quantile(
+            0.50,
+            sum by (le)
+              (rate(goshop_gateway_grpc_handling_seconds_bucket{grpc_service!="grpc.health.v1"}[5m]))
+          )
+      - record: gateway:grpc_lat_p90:5m
+        expr: |
+          histogram_quantile(
+            0.90,
+            sum by (le)
+              (rate(goshop_gateway_grpc_handling_seconds_bucket{grpc_service!="grpc.health.v1"}[5m]))
+          )
+      - record: gateway:grpc_lat_p99:5m
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le)
+              (rate(goshop_gateway_grpc_handling_seconds_bucket{grpc_service!="grpc.health.v1"}[5m]))
+          )

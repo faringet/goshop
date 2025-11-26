@@ -29,6 +29,7 @@ services:
       users-migrate: { condition: service_completed_successfully }
     ports:
       - "5081:8081"
+      - "2113:2112"
     healthcheck:
       test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 8081"]
       interval: 5s

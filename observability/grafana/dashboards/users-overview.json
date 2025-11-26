@@ -1,0 +1,41 @@
+{
+  "title": "Users Overview",
+  "uid": "goshop-users-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "tags": ["goshop","users"],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "RPS (users)",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{ "expr": "users:http_rps:1m" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5m)",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [{ "expr": "users:http_error_ratio:5m" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50 / p90 / p99 (s, 5m)",
+      "gridPos": {"x": 0, "y": 8, "w": 18, "h": 8},
+      "targets": [
+        { "expr": "users:http_lat_p50:5m", "legendFormat": "p50" },
+        { "expr": "users:http_lat_p90:5m", "legendFormat": "p90" },
+        { "expr": "users:http_lat_p99:5m", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "In-flight HTTP",
+      "gridPos": {"x": 18, "y": 8, "w": 6, "h": 8},
+      "targets": [{ "expr": "goshop_users_http_in_flight_requests" }]
+    }
+  ],
+  "time": { "from": "now-15m", "to": "now" }
+}

@@ -31,6 +31,15 @@ func WithModules(mods ...Module) Option {
 	}
 }
 
+func WithMiddleware(mw ...gin.HandlerFunc) Option {
+	return func(r *gin.Engine) {
+		if len(mw) == 0 {
+			return
+		}
+		r.Use(mw...)
+	}
+}
+
 type Server struct {
 	http *http.Server
 	log  *slog.Logger

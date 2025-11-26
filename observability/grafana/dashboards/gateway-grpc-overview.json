@@ -1,0 +1,52 @@
+{
+  "title": "Gateway • gRPC Overview",
+  "timezone": "browser",
+  "tags": ["goshop","gateway","grpc"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "RPS (gateway)",
+      "gridPos": {"x":0,"y":0,"w":12,"h":8},
+      "targets": [
+        {"expr":"gateway:grpc_rps:1m","legendFormat":"total"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error ratio (5m)",
+      "gridPos": {"x":12,"y":0,"w":12,"h":8},
+      "targets": [
+        {"expr":"gateway:grpc_error_ratio:5m","legendFormat":"error ratio"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50 / p90 / p99 (s, 5m)",
+      "gridPos": {"x":0,"y":8,"w":24,"h":8},
+      "targets": [
+        {"expr":"gateway:grpc_lat_p50:5m","legendFormat":"p50"},
+        {"expr":"gateway:grpc_lat_p90:5m","legendFormat":"p90"},
+        {"expr":"gateway:grpc_lat_p99:5m","legendFormat":"p99"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "In-flight gRPC",
+      "gridPos": {"x":0,"y":16,"w":12,"h":8},
+      "targets": [
+        {"expr":"goshop_gateway_grpc_in_flight_requests","legendFormat":"in-flight"}
+      ]
+    },
+    {
+      "type": "bargauge",
+      "title": "RPS by method (1m)",
+      "gridPos": {"x":12,"y":16,"w":12,"h":8},
+      "targets": [
+        {"expr":"sum by (grpc_service, grpc_method) (rate(goshop_gateway_grpc_requests_total[1m]))","legendFormat":"{{grpc_service}}/{{grpc_method}}"}
+      ]
+    }
+  ]
+}

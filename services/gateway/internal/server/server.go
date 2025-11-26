@@ -21,6 +21,11 @@ import (
 	"goshop/services/gateway/internal/service"
 )
 
+type (
+	UnaryInt  = grpc.UnaryServerInterceptor
+	StreamInt = grpc.StreamServerInterceptor
+)
+
 type Options struct {
 	Addr           string
 	OrdersGRPCAddr string
@@ -28,6 +33,8 @@ type Options struct {
 	Logger         *slog.Logger
 	EnableReflect  bool
 	Redis          *redis.Client
+	Unary          []UnaryInt
+	Stream         []StreamInt
 }
 
 func Start(ctx context.Context, opt Options) error {
@@ -45,17 +52,28 @@ func Start(ctx context.Context, opt Options) error {
 		return err
 	}
 
-	serverOpts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(
-			selector.UnaryServerInterceptor(
-				logging.UnaryServerInterceptor(
-					slogLogger(log),
-					logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
-				),
-				selector.MatchFunc(skipHealthLogs),
+	unaryChain := make([]UnaryInt, 0, 4+len(opt.Unary))
+	unaryChain = append(unaryChain, opt.Unary...)
+	unaryChain = append(unaryChain,
+		selector.UnaryServerInterceptor(
+			logging.UnaryServerInterceptor(
+				slogLogger(log),
+				logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 			),
-			recovery.UnaryServerInterceptor(),
+			selector.MatchFunc(skipHealthLogs),
 		),
+		recovery.UnaryServerInterceptor(),
+	)
+
+	streamChain := make([]StreamInt, 0, 2+len(opt.Stream))
+	streamChain = append(streamChain, opt.Stream...)
+	streamChain = append(streamChain,
+		recovery.StreamServerInterceptor(),
+	)
+
+	serverOpts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryChain...),
+		grpc.ChainStreamInterceptor(streamChain...),
 	}
 	s := grpc.NewServer(serverOpts...)
 
