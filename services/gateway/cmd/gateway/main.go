@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"goshop/pkg/metrics"
 	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -30,6 +32,32 @@ func main() {
 		slog.String("grpc.addr", cfg.GRPC.Addr),
 		slog.String("orders.grpc.addr", cfg.OrdersGRPC.Addr),
 		slog.String("redis.addr", cfg.Redis.Addr),
+	)
+
+	// ── Metrics server (Prometheus) ────────────────────────────────────────────
+	env := os.Getenv("APP_ENV")
+	if env == "" {
+		env = "docker"
+	}
+	met, err := metrics.Init(log, metrics.Config{
+		Service:   "gateway",
+		Namespace: "goshop",
+		Addr:      ":2112",
+		Version:   "dev",
+		Env:       env,
+	})
+	if err != nil {
+		log.Error("metrics: init failed", slog.Any("err", err))
+		return
+	}
+	defer func() { _ = met.Shutdown(context.Background()) }()
+
+	// gRPC metrics (с быстрыми веб-бакетами)
+	grpcm := metrics.NewGRPCMetrics(
+		met.Registry(),
+		"goshop",
+		"gateway",
+		metrics.WithGRPCBuckets(metrics.WebFastBuckets),
 	)
 
 	// Redis client
@@ -63,6 +91,9 @@ func main() {
 		Logger:         log,
 		EnableReflect:  true,
 		Redis:          rdb,
+
+		Unary:  []server.UnaryInt{grpcm.UnaryServerInterceptor()},
+		Stream: []server.StreamInt{grpcm.StreamServerInterceptor()},
 	}
 
 	if err := server.Start(ctx, opts); err != nil {

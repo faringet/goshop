@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opsassistant-config
+  namespace: goshop
+data:
+  config.yaml: |
+    app_name: "opsassistant"
+
+    logger:
+      level: "info"
+      json: true
+      app_name: "opsassistant"
+
+    grpc:
+      addr: ":9191"
+
+    postgres:
+      host: "host.docker.internal"   
+      port: 5432
+      user: "goshop"
+      password: "goshop"
+      dbname: "goshop"
+      sslmode: "disable"
+      max_conns: 10
+      min_conns: 2
+      conn_life: "30m"
+      health_ping: "5s"
+
+    ollama:
+      base_url: "http://host.docker.internal:11434"  
+      model: "qwen2.5:3b-instruct"
+      timeout: "60s"

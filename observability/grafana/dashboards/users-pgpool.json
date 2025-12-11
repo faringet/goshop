@@ -1,0 +1,114 @@
+{
+  "uid": "users-pgpool",
+  "title": "Users • PG Pool",
+  "timezone": "browser",
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["users", "pgx", "postgres"],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Pool utilization %",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto" },
+      "fieldConfig": {
+        "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 85 } ] } },
+        "overrides": []
+      },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_utilization * 100", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections (idle / in-use / total vs max)",
+      "gridPos": { "h": 8, "w": 18, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_idle",     "legendFormat": "idle",     "datasource": { "type": "prometheus", "uid": "Prometheus" } },
+        { "refId": "B", "expr": "users:pgx_acquired", "legendFormat": "in-use",   "datasource": { "type": "prometheus", "uid": "Prometheus" } },
+        { "refId": "C", "expr": "users:pgx_total",    "legendFormat": "total",    "datasource": { "type": "prometheus", "uid": "Prometheus" } },
+        { "refId": "D", "expr": "users:pgx_max",      "legendFormat": "max",      "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Acquire rate (ops/s)",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_acquire_rps", "legendFormat": "acquire rps", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Avg acquire time (ms)",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_avg_acquire_ms", "legendFormat": "avg acquire", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Waits (pool empty) rps",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_wait_rps", "legendFormat": "wait rps", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Avg wait when empty (ms)",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_avg_wait_ms", "legendFormat": "avg wait", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "New connections / destroys (rps)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_new_conns_rps",     "legendFormat": "new conns",     "datasource": { "type": "prometheus", "uid": "Prometheus" } },
+        { "refId": "B", "expr": "users:pgx_destroy_idle_rps",  "legendFormat": "destroy idle",  "datasource": { "type": "prometheus", "uid": "Prometheus" } },
+        { "refId": "C", "expr": "users:pgx_destroy_life_rps",  "legendFormat": "destroy life",  "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Max connections",
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 16 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_max", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Constructing conns (now)",
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 16 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(goshop_users_pgx_constructing_conns)", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Acquired now",
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 16 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "users:pgx_acquired", "datasource": { "type": "prometheus", "uid": "Prometheus" } }
+      ]
+    }
+  ]
+}

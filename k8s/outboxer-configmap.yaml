@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: outboxer-config
+  namespace: goshop
+data:
+  config.yaml: |
+    app_name: "outboxer"
+
+    logger:
+      level: "info"
+      json: true
+      app_name: "outboxer"
+
+    postgres:
+      host: "host.docker.internal"
+      port: 5432
+      user: "goshop"
+      password: "goshop"
+      dbname: "goshop"
+      sslmode: "disable"
+      max_conns: 10
+      min_conns: 2
+      conn_life: "30m"
+      health_ping: "5s"
+
+    kafka:
+      brokers: ["host.docker.internal:9092"]
+
+    workers:
+      - outbox_table: "orders_outbox"
+        batch_size: 100
+        poll_interval: 1s
+        produce_timeout: 3s
+        max_retries: 10
+        backoff_base_ms: 500
+      - outbox_table: "payments_outbox"
+        batch_size: 100
+        poll_interval: 1s
+        produce_timeout: 3s
+        max_retries: 10
+        backoff_base_ms: 500

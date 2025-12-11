@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: goshop
+  labels:
+    app: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments
+  template:
+    metadata:
+      labels:
+        app: payments
+    spec:
+      containers:
+        - name: payments
+          image: goshop-payments:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: APP_ENV
+              value: "k8s"
+            - name: CONFIG_FILE
+              value: "/app/config/config.yaml"
+          volumeMounts:
+            - name: payments-config-volume
+              mountPath: /app/config
+      volumes:
+        - name: payments-config-volume
+          configMap:
+            name: payments-config
+            items:
+              - key: config.yaml
+                path: config.yaml

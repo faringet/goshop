@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payments-config
+  namespace: goshop
+data:
+  config.yaml: |
+    app_name: "payments"
+
+    logger:
+      level: "info"
+      json: true
+      app_name: "payments"
+
+    http:
+      addr: ":8082"
+      read_timeout: 5s
+      write_timeout: 10s
+      idle_timeout: 60s
+
+    postgres:
+      host: "host.docker.internal"   
+      port: 5432
+      user: "goshop"
+      password: "goshop"
+      dbname: "goshop"
+      sslmode: "disable"
+      max_conns: 10
+      min_conns: 2
+      conn_life: "30m"
+      health_ping: "5s"
+
+    kafka:
+      brokers: ["host.docker.internal:9092"]  
+
+    consumer:
+      group: "payments-cg"
+      topic: "orders.events"
+
+    outbox:
+      topic: "payments.events"
