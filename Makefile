@@ -10,23 +10,28 @@ DC_PROJECT     ?= goshop
 	k8s-ingress-nginx-install k8s-ingress-nginx-wait k8s-ingress-apply k8s-ingress-bootstrap \
 	k8s-ingress-nginx-download k8s-portforward-ingress \
 	users-image users-kind-load users-build-and-load \
+	users-migrate-image users-migrate-kind-load \
 	k8s-users-apply k8s-users-status k8s-users-logs \
 	orders-image orders-kind-load orders-build-and-load \
+	orders-migrate-image orders-migrate-kind-load \
 	k8s-orders-apply k8s-orders-status k8s-orders-logs \
 	outboxer-image outboxer-kind-load outboxer-build-and-load \
 	k8s-outboxer-apply k8s-outboxer-status k8s-outboxer-logs \
 	payments-image payments-kind-load payments-build-and-load \
+	payments-migrate-image payments-migrate-kind-load \
 	k8s-payments-apply k8s-payments-status k8s-payments-logs \
 	gateway-image gateway-kind-load gateway-build-and-load \
 	k8s-gateway-apply k8s-gateway-status k8s-gateway-logs \
 	opsassistant-image opsassistant-kind-load opsassistant-build-and-load \
 	k8s-opsassistant-apply k8s-opsassistant-status k8s-opsassistant-logs \
-	k8s-kind-create k8s-kind-delete k8s-build-and-load-all k8s-apply-all k8s-bootstrap \
+	k8s-kind-create k8s-kind-delete k8s-kind-ensure \
+	k8s-build-and-load-all k8s-apply-all k8s-bootstrap \
+	k8s-migrate-users k8s-migrate-orders k8s-migrate-payments k8s-migrate-all \
 	k8s-status-all \
 	k8s-redeploy-users k8s-redeploy-orders k8s-redeploy-payments \
 	k8s-redeploy-outboxer k8s-redeploy-gateway k8s-redeploy-opsassistant \
 	k8s-clean k8s-redeploy-all \
-	docker-all-up docker-all-down docker-infra-up docker-infra-down \
+	docker-all-up docker-all-down docker-infra-up docker-infra-down docker-ollama-pull \
 	dev-docker-only dev-docker-only-down dev-hybrid dev-hybrid-down
 
 
@@ -79,19 +84,27 @@ docker-infra-down:
 		$(DOCKER_FILES_INFRA) \
 		down -v
 
+# Явный pull модели Ollama (ollama + ollama-pull)
+docker-ollama-pull:
+	$(DOCKER_COMPOSE) -p $(DC_PROJECT) \
+		-f ./docker-compose.ollama.yml \
+		run --rm ollama-pull
 
 
 dev-hybrid:
 	@echo "1) Bringing up Docker infra (DB, Kafka, Ollama, logs)..."
 	$(MAKE) docker-infra-up
-	$(MAKE) docker-migrate-all
+	@echo "1.1) Ensuring Ollama model is pulled..."
+	$(MAKE) docker-ollama-pull
 	@echo "2) Creating kind cluster $(KIND_CLUSTER) (if not exists)..."
-	-$(MAKE) k8s-kind-create
-	@echo "3) Building and loading all images into kind..."
+	$(MAKE) k8s-kind-ensure
+	@echo "3) Building and loading all images (apps + migrations) into kind..."
 	$(MAKE) k8s-build-and-load-all
-	@echo "4) Applying all k8s manifests (deployments/services)..."
+	@echo "4) Running database migrations in k8s Jobs..."
+	$(MAKE) k8s-migrate-all
+	@echo "5) Applying all k8s manifests (deployments/services)..."
 	$(MAKE) k8s-apply-all
-	@echo "5) Installing ingress-nginx and app ingresses..."
+	@echo "6) Installing ingress-nginx and app ingresses..."
 	$(MAKE) k8s-ingress-bootstrap
 	@echo "Hybrid dev mode: infra/logs in Docker, services in kind cluster $(KIND_CLUSTER)."
 
@@ -114,6 +127,11 @@ k8s-kind-create:
 # Снести кластер kind
 k8s-kind-delete:
 	kind delete cluster --name $(KIND_CLUSTER)
+
+# Создать кластер, только если его ещё нет
+k8s-kind-ensure:
+	- kind create cluster --name $(KIND_CLUSTER) || echo "kind cluster $(KIND_CLUSTER) may already exist"
+
 
 
 # ================== INGRESS-NGINX ==================
@@ -154,6 +172,7 @@ k8s-portforward-ingress:
 
 USERS_IMAGE ?= goshop-users
 USERS_TAG   ?= dev
+USERS_MIGRATE_IMAGE ?= goshop-users-migrate
 
 users-image:
 	docker build -f services/users/Dockerfile -t $(USERS_IMAGE):$(USERS_TAG) --target users-app .
@@ -163,6 +182,12 @@ users-kind-load: users-image
 
 users-build-and-load: users-kind-load
 	@echo "users image $(USERS_IMAGE):$(USERS_TAG) loaded into kind cluster $(KIND_CLUSTER)"
+
+users-migrate-image:
+	docker build -f services/users/Dockerfile -t $(USERS_MIGRATE_IMAGE):$(USERS_TAG) --target users-migrate .
+
+users-migrate-kind-load: users-migrate-image
+	kind load docker-image $(USERS_MIGRATE_IMAGE):$(USERS_TAG) --name $(KIND_CLUSTER)
 
 k8s-users-apply:
 	kubectl apply -f $(K8S_DIR)/namespace-goshop.yaml
@@ -181,6 +206,7 @@ k8s-users-logs:
 
 ORDERS_IMAGE ?= goshop-orders
 ORDERS_TAG   ?= dev
+ORDERS_MIGRATE_IMAGE ?= goshop-orders-migrate
 
 orders-image:
 	docker build -f services/orders/Dockerfile -t $(ORDERS_IMAGE):$(ORDERS_TAG) --target orders-app .
@@ -190,6 +216,12 @@ orders-kind-load: orders-image
 
 orders-build-and-load: orders-kind-load
 	@echo "orders image $(ORDERS_IMAGE):$(ORDERS_TAG) loaded into kind cluster $(KIND_CLUSTER)"
+
+orders-migrate-image:
+	docker build -f services/orders/Dockerfile -t $(ORDERS_MIGRATE_IMAGE):$(ORDERS_TAG) --target orders-migrate .
+
+orders-migrate-kind-load: orders-migrate-image
+	kind load docker-image $(ORDERS_MIGRATE_IMAGE):$(ORDERS_TAG) --name $(KIND_CLUSTER)
 
 k8s-orders-apply:
 	kubectl apply -f $(K8S_DIR)/orders-configmap.yaml
@@ -232,6 +264,7 @@ k8s-outboxer-logs:
 
 PAYMENTS_IMAGE ?= goshop-payments
 PAYMENTS_TAG   ?= dev
+PAYMENTS_MIGRATE_IMAGE ?= goshop-payments-migrate
 
 payments-image:
 	docker build -f services/payments/Dockerfile -t $(PAYMENTS_IMAGE):$(PAYMENTS_TAG) --target payments-app .
@@ -241,6 +274,12 @@ payments-kind-load: payments-image
 
 payments-build-and-load: payments-kind-load
 	@echo "payments image $(PAYMENTS_IMAGE):$(PAYMENTS_TAG) loaded into kind cluster $(KIND_CLUSTER)"
+
+payments-migrate-image:
+	docker build -f services/payments/Dockerfile -t $(PAYMENTS_MIGRATE_IMAGE):$(PAYMENTS_TAG) --target payments-migrate .
+
+payments-migrate-kind-load: payments-migrate-image
+	kind load docker-image $(PAYMENTS_MIGRATE_IMAGE):$(PAYMENTS_TAG) --name $(KIND_CLUSTER)
 
 k8s-payments-apply:
 	kubectl apply -f $(K8S_DIR)/payments-configmap.yaml
@@ -308,11 +347,11 @@ k8s-opsassistant-logs:
 
 # ================== АГРЕГИРОВАННЫЕ ТАРГЕТЫ ==================
 
-# Собрать и залить ВСЕ образы в kind
+# Собрать и залить ВСЕ образы в kind (app + миграторы)
 k8s-build-and-load-all: \
-	users-build-and-load \
-	orders-build-and-load \
-	payments-build-and-load \
+	users-build-and-load users-migrate-kind-load \
+	orders-build-and-load orders-migrate-kind-load \
+	payments-build-and-load payments-migrate-kind-load \
 	outboxer-build-and-load \
 	gateway-build-and-load \
 	opsassistant-build-and-load
@@ -325,9 +364,25 @@ k8s-apply-all: \
 	k8s-gateway-apply \
 	k8s-opsassistant-apply
 
-# Полный bootstrap: кластер + образы + деплойменты + ingress
-k8s-bootstrap: k8s-kind-create k8s-build-and-load-all k8s-apply-all k8s-ingress-bootstrap
-	@echo "Кластер $(KIND_CLUSTER) полностью развернут (services + ingress)."
+# Прогон миграций через k8s Job'ы
+k8s-migrate-users:
+	kubectl apply -f $(K8S_DIR)/users-migrate-job.yaml
+	kubectl wait --for=condition=complete -n $(K8S_NAMESPACE) job/users-migrate --timeout=300s
+
+k8s-migrate-orders:
+	kubectl apply -f $(K8S_DIR)/orders-migrate-job.yaml
+	kubectl wait --for=condition=complete -n $(K8S_NAMESPACE) job/orders-migrate --timeout=300s
+
+k8s-migrate-payments:
+	kubectl apply -f $(K8S_DIR)/payments-migrate-job.yaml
+	kubectl wait --for=condition=complete -n $(K8S_NAMESPACE) job/payments-migrate --timeout=300s
+
+k8s-migrate-all: k8s-migrate-users k8s-migrate-orders k8s-migrate-payments
+	@echo "All migrations completed in namespace $(K8S_NAMESPACE)."
+
+# Полный bootstrap: кластер + образы + миграции + деплойменты + ingress
+k8s-bootstrap: k8s-kind-create k8s-build-and-load-all k8s-migrate-all k8s-apply-all k8s-ingress-bootstrap
+	@echo "Кластер $(KIND_CLUSTER) полностью развернут (services + migrations + ingress)."
 
 # Красивый статус всего кластера: наши сервисы + ingress-nginx
 k8s-status-all:

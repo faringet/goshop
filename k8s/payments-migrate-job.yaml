@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: payments-migrate
+  namespace: goshop
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: payments-migrate
+          image: goshop-payments-migrate:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              value: "postgres://goshop:goshop@host.docker.internal:5432/goshop?sslmode=disable&search_path=payments,public"
+            - name: RETRIES
+              value: "120"
+            - name: SLEEP_SECONDS
+              value: "2"
