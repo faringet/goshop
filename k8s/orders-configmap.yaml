@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-config
+  namespace: goshop
+data:
+  config.yaml: |
+    app_name: "orders"
+
+    logger:
+      level: "info"
+      json: true
+      app_name: "orders"
+
+    http:
+      addr: ":8082"
+      read_timeout: 5s
+      write_timeout: 10s
+      idle_timeout: 60s
+
+    postgres:
+      host: "host.docker.internal"
+      port: 5432
+      user: "goshop"
+      password: "goshop"
+      dbname: "goshop"
+      sslmode: "disable"
+      max_conns: 20
+      min_conns: 5
+      conn_life: 30m
+      health_ping: 5s
+
+    kafka:
+      brokers: ["host.docker.internal:9092"]
+
+    consumer:
+      group: "orders-cg"
+      topic: "payments.events"
+      session_timeout: "10s"
+      rebalance_timeout: "30s"
+
+    jwt:
+      secret: "dev-super-secret-change-me"
+      issuer: "goshop-auth"
+
+    grpc:
+      addr: ":7072"
+
+    redis:
+      addr: "host.docker.internal:6379"
+      db: 0
+      password: ""
+      ttl_status: "24h"
+
+    telemetry:
+      otlp_endpoint: ""
+      sample_ratio: 0.

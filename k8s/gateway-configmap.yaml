@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: goshop
+data:
+  config.yaml: |
+    app_name: "gateway"
+
+    logger:
+      level: "info"
+      json: true
+      app_name: "gateway"
+
+    grpc:
+      addr: ":7070"
+
+    redis:
+      addr: "host.docker.internal:6379"  
+      password: ""
+      db: 0
+      dial_timeout: 2s
+      read_timeout: 2s
+      write_timeout: 2s
+
+    orders_grpc:
+      addr: "orders:7072"  
+      timeout: 3s

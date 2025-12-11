@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: goshop
+  labels:
+    app: orders
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: orders
+          image: goshop-orders:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: APP_ENV
+              value: "k8s"
+            - name: CONFIG_FILE
+              value: "/app/config/config.yaml"
+          ports:
+            - name: http
+              containerPort: 8082
+            - name: grpc
+              containerPort: 7072
+          volumeMounts:
+            - name: orders-config-volume
+              mountPath: /app/config
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      volumes:
+        - name: orders-config-volume
+          configMap:
+            name: orders-config
+            items:
+              - key: config.yaml
+                path: config.yaml

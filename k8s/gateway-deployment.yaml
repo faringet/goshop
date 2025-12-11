@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: goshop
+  labels:
+    app: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: goshop-gateway:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: APP_ENV
+              value: "k8s"
+            - name: CONFIG_FILE
+              value: "/app/config/config.yaml"
+          ports:
+            - name: grpc
+              containerPort: 7070
+            - name: metrics
+              containerPort: 2112
+          volumeMounts:
+            - name: gateway-config-volume
+              mountPath: /app/config
+          readinessProbe:
+            tcpSocket:
+              port: 7070
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 7070
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      volumes:
+        - name: gateway-config-volume
+          configMap:
+            name: gateway-config
+            items:
+              - key: config.yaml
+                path: config.yaml

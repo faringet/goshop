@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: users-config
+  namespace: goshop
+data:
+  config.yaml: |
+    app_name: "users"
+
+    logger:
+      level: "info"
+      json: true
+      app_name: "users"
+
+    http:
+      addr: ":8081"
+      read_timeout: 5s
+      write_timeout: 10s
+      idle_timeout: 60s
+
+    postgres:
+      host: "host.docker.internal"
+      port: 5432
+      user: "goshop"
+      password: "goshop"
+      dbname: "goshop"
+      sslmode: "disable"
+      max_conns: 20
+      min_conns: 5
+      conn_life: 30m
+      health_ping: 5s
+
+    redis:
+      addr: "host.docker.internal:6379"
+      db: 0
+
+    jwt:
+      secret: "dev-super-secret-change-me"
+      issuer: "goshop-auth"
+      access_ttl: "15m"
+      refresh_ttl: "720h"
+      access_audience: "api"
+      refresh_audience: "refresh"

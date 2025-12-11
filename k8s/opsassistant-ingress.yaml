@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opsassistant-ingress
+  namespace: goshop
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /ops.v1.OpsAssistant
+            pathType: Prefix
+            backend:
+              service:
+                name: opsassistant
+                port:
+                  number: 9191

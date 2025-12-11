@@ -233,3 +233,263 @@ Authorization: Bearer <JWT_ACCESS>
 
 * сгенерировать файлы новой миграции (Up/Down в одном .sql)
 ```go run services/users/cmd/migrate/main.go create add_users_index sql```
+
+___
+___
+___
+
+# Makefile команды
+---
+
+### Всё в Docker
+
+- **`make dev-docker-only`** супер старт
+
+- **`make dev-docker-only-down`**  сносим все нахер
+
+### Гибрид: infra в Docker, сервисы в Kubernetes
+
+- **`make dev-hybrid`** супер старт
+
+- **`make dev-hybrid-down`**  останавливаем
+
+
+### Гибрид: infra в Docker, сервисы в Kubernetes (kind)
+
+- **`make docker-infra-up`**  
+  Поднимает только **инфраструктуру** в Docker:
+  БД, Kafka, Ollama, стэк логирования и т.п.  
+  Никакие сервисы (users/orders/…) не стартуют.
+
+- **`make docker-infra-down`**  
+  Останавливает и удаляет контейнеры и volume’ы, поднятые `docker-infra-up`.
+
+- **`make dev-hybrid`**  
+  Комплексный сценарий:
+    1. Поднимает инфраструктуру в Docker (`docker-infra-up`),
+    2. Создаёт кластер kind (если его нет),
+    3. Собирает и загружает все образы в kind,
+    4. Применяет все k8s-манифесты сервисов,
+    5. Ставит ingress-nginx и Ingress’ы.  
+       В итоге: infra/logs в Docker, сервисы — в k8s.
+
+- **`make dev-hybrid-down`**  
+  Обратный сценарий:
+    1. Чистит namespace `goshop` в кластере (`k8s-clean`),
+    2. Останавливает инфраструктуру в Docker (`docker-infra-down`).
+
+---
+
+## Кластер kind
+
+- **`make k8s-kind-create`**  
+  Создаёт кластер kind с именем `$(KIND_CLUSTER)` (по умолчанию `goshop`).
+
+- **`make k8s-kind-delete`**  
+  Полностью удаляет кластер kind с именем `$(KIND_CLUSTER)`.
+
+---
+
+## Ingress-nginx и Ingress’ы приложения
+
+- **`make k8s-ingress-nginx-download`**  
+  Скачивает официальный манифест ingress-nginx для kind в файл  
+  `k8s/infra/ingress-nginx-kind.yaml`.
+
+- **`make k8s-ingress-nginx-install`**  
+  Устанавливает ingress-nginx в кластер из локального манифеста  
+  `k8s/infra/ingress-nginx-kind.yaml`.
+
+- **`make k8s-ingress-nginx-wait`**  
+  Ждёт, пока pod контроллера ingress-nginx перейдёт в состояние `Ready`.
+
+- **`make k8s-ingress-apply`**  
+  Применяет все Ingress-ресурсы приложения:  
+  `k8s/users-ingress.yaml`, `k8s/gateway-ingress.yaml`, `k8s/opsassistant-ingress.yaml`.
+
+- **`make k8s-ingress-bootstrap`**  
+  Полный цикл для ingress:
+    1. Скачать манифест (если нужно),
+    2. Установить ingress-nginx,
+    3. Дождаться готовности,
+    4. Применить Ingress’ы приложения.
+
+- **`make k8s-portforward-ingress`**  
+  Делает `kubectl port-forward` `svc/ingress-nginx-controller` на `localhost:8080`  
+  (чтобы ходить в users/gateway/opsassistant через `http://localhost:8080`).
+
+---
+
+## Сервис: users
+
+- **`make users-image`**  
+  Собирает Docker-образ `goshop-users:dev` из `services/users/Dockerfile` (target `users-app`).
+
+- **`make users-kind-load`**  
+  Загружает образ `goshop-users:dev` в кластер kind `$(KIND_CLUSTER)`.
+
+- **`make users-build-and-load`**  
+  Последовательно делает `users-image` + `users-kind-load`.  
+  Удобная команда «собрать и загрузить users».
+
+- **`make k8s-users-apply`**  
+  Применяет все манифесты для users:
+  `namespace-goshop.yaml`, `users-configmap.yaml`, `users-deployment.yaml`, `users-service.yaml`.
+
+- **`make k8s-users-status`**  
+  Показывает pods и сервисы users (по `app=users`) в namespace `$(K8S_NAMESPACE)`.
+
+- **`make k8s-users-logs`**  
+  Показывает последние логи деплоймента `users` (`kubectl logs deploy/users`).
+
+---
+
+## Сервис: orders
+
+- **`make orders-image`**  
+  Собирает Docker-образ `goshop-orders:dev`.
+
+- **`make orders-kind-load`**  
+  Загружает `goshop-orders:dev` в kind-кластер.
+
+- **`make orders-build-and-load`**  
+  Собрать + загрузить образ orders в kind.
+
+- **`make k8s-orders-apply`**  
+  Применяет манифесты orders: configmap, deployment, service.
+
+- **`make k8s-orders-status`**  
+  Статус pods и service для orders в namespace `$(K8S_NAMESPACE)`.
+
+- **`make k8s-orders-logs`**  
+  Логи деплоймента `orders`.
+
+---
+
+## Сервис: outboxer
+
+- **`make outboxer-image`**  
+  Собирает Docker-образ `goshop-outboxer:dev`.
+
+- **`make outboxer-kind-load`**  
+  Загружает `goshop-outboxer:dev` в kind.
+
+- **`make outboxer-build-and-load`**  
+  Собрать + загрузить образ outboxer.
+
+- **`make k8s-outboxer-apply`**  
+  Применяет манифесты outboxer: configmap, deployment.
+
+- **`make k8s-outboxer-status`**  
+  Статус pods outboxer в namespace `$(K8S_NAMESPACE)`.
+
+- **`make k8s-outboxer-logs`**  
+  Логи деплоймента `outboxer`.
+
+---
+
+## Сервис: payments
+
+- **`make payments-image`**  
+  Собирает Docker-образ `goshop-payments:dev`.
+
+- **`make payments-kind-load`**  
+  Загружает `goshop-payments:dev` в kind.
+
+- **`make payments-build-and-load`**  
+  Собрать + загрузить образ payments.
+
+- **`make k8s-payments-apply`**  
+  Применяет манифесты payments: configmap, deployment, service.
+
+- **`make k8s-payments-status`**  
+  Статус pods/service для payments.
+
+- **`make k8s-payments-logs`**  
+  Логи деплоймента `payments`.
+
+---
+
+## Сервис: gateway
+
+- **`make gateway-image`**  
+  Собирает Docker-образ `goshop-gateway:dev`.
+
+- **`make gateway-kind-load`**  
+  Загружает `goshop-gateway:dev` в kind.
+
+- **`make gateway-build-and-load`**  
+  Собрать + загрузить образ gateway.
+
+- **`make k8s-gateway-apply`**  
+  Применяет манифесты gateway: configmap, deployment, service.
+
+- **`make k8s-gateway-status`**  
+  Статус pods/service для gateway.
+
+- **`make k8s-gateway-logs`**  
+  Логи деплоймента `gateway`.
+
+---
+
+## Сервис: opsassistant
+
+- **`make opsassistant-image`**  
+  Собирает Docker-образ `goshop-opsassistant:dev`.
+
+- **`make opsassistant-kind-load`**  
+  Загружает `goshop-opsassistant:dev` в kind.
+
+- **`make opsassistant-build-and-load`**  
+  Собрать + загрузить образ opsassistant.
+
+- **`make k8s-opsassistant-apply`**  
+  Применяет манифесты opsassistant: configmap, deployment, service.
+
+- **`make k8s-opsassistant-status`**  
+  Статус pods/service для opsassistant.
+
+- **`make k8s-opsassistant-logs`**  
+  Логи деплоймента `opsassistant`.
+
+---
+
+## Агрегированные команды для k8s
+
+- **`make k8s-build-and-load-all`**  
+  Собирает и загружает в kind ВСЕ сервисы:
+  users, orders, payments, outboxer, gateway, opsassistant.
+
+- **`make k8s-apply-all`**  
+  Применяет все манифесты сервисов:
+  users, orders, payments, outboxer, gateway, opsassistant.
+
+- **`make k8s-bootstrap`**  
+  Полный bootstrap k8s (без Docker-инфры):
+    1. Создать кластер kind,
+    2. Собрать и загрузить все образы,
+    3. Применить все манифесты сервисов,
+    4. Поставить ingress-nginx и Ingress’ы.
+
+- **`make k8s-status-all`**  
+  Печатает сводную информацию:
+    - Pods/Services/Ingress в namespace `$(K8S_NAMESPACE)`,
+    - Pods/Services в namespace `ingress-nginx`.
+
+---
+
+## Очистка и redeploy
+
+- **`make k8s-clean`**  
+  Чистит namespace `$(K8S_NAMESPACE)`:
+    - удаляет все `deployments`, `services`, `pods`, `jobs` и т.п.,
+    - удаляет все `ingress`,
+    - удаляет все `configmap`.  
+      Кластер kind и ingress-nginx не трогаются.
+
+- **`make k8s-redeploy-all`**  
+  Полный redeploy всех сервисов:
+    1. `users-build-and-load`, `orders-build-and-load`, `payments-build-and-load`,
+       `outboxer-build-and-load`, `gateway-build-and-load`, `opsassistant-build-and-load`,
+    2. `k8s-apply-all`.  
+       Удобно после массовых изменений в коде.
